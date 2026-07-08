@@ -340,6 +340,11 @@ async function loadHome({ skipGeo = false } = {}) {
       ${bestPoints.map(({ point, forecast }) => renderPointListItem(point, forecast.result)).join("")}
     </div>
 
+    <div class="section-header"><span class="icon">🗺️</span><h3>Регионы</h3></div>
+    <div class="card">
+      ${renderRegionsPreview()}
+    </div>
+
     <div class="section-header"><span class="icon">🏆</span><h3>Рейтинг рыбаков</h3></div>
     <div class="card">
       ${renderLeaderboardPreview(profileStats.reportsCount)}
@@ -366,6 +371,7 @@ async function loadHome({ skipGeo = false } = {}) {
   contentEl.innerHTML = html;
   bindOpenPointButtons(contentEl);
   bindArticleCards(contentEl);
+  bindRegionChips(contentEl);
 
   document.getElementById("mini-profile-card").addEventListener("click", () => {
     state.viewStack = ["profile"];
@@ -760,9 +766,10 @@ async function openPoint(pointOrId) {
 
     if (!point.town) {
       reverseGeocode(point.lat, point.lon)
-        .then((town) => {
+        .then(({ town, region }) => {
           if (!town || currentOpenPoint !== point) return;
           point.town = town;
+          point.region = region;
           const subtitleEl = document.getElementById("point-subtitle");
           if (subtitleEl) {
             subtitleEl.textContent = `${point.type ? typeLabel(point.type) + " · " : ""}${town}`;
@@ -1060,12 +1067,18 @@ function escapeHtml(str) {
 // ---------- ФОРМА ОТЧЁТА ----------
 
 function openReportForm(pointId) {
+  const point = getPointById(pointId);
   document.getElementById("report-point-id").value = pointId;
   document.getElementById("report-form").reset();
   state.reportSelection = { isBiting: true, rating: 0, photoDataUrl: null };
   document.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.biting === "true"));
   document.querySelectorAll("#report-stars span").forEach((s) => s.classList.remove("active"));
   document.getElementById("report-photo-preview").innerHTML = "";
+  document.getElementById("photo-upload-label").classList.remove("has-photo");
+  document.getElementById("photo-upload-text").textContent = "Нажмите, чтобы сделать фото или выбрать из галереи";
+  document.getElementById("report-point-display").innerHTML = point
+    ? `📍 ${point.name}${point.town ? ` <span class="card-sub" style="margin:0;">· ${point.town}</span>` : ""}`
+    : "";
   showView("report");
 }
 
@@ -1094,6 +1107,8 @@ document.getElementById("report-photo").addEventListener("change", (e) => {
   reader.onload = () => {
     state.reportSelection.photoDataUrl = reader.result;
     document.getElementById("report-photo-preview").innerHTML = `<img src="${reader.result}" />`;
+    document.getElementById("photo-upload-label").classList.add("has-photo");
+    document.getElementById("photo-upload-text").textContent = "✅ Фото добавлено — можно заменить";
   };
   reader.readAsDataURL(file);
 });
@@ -1356,6 +1371,120 @@ function openArticle(id) {
   `;
 }
 
+// ---------- РЕГИОНЫ ----------
+
+function getRegionsSummary() {
+  const points = getAllPoints().filter((p) => p.region);
+  const reports = Storage.getReports();
+  const byRegion = new Map();
+
+  points.forEach((p) => {
+    if (!byRegion.has(p.region)) byRegion.set(p.region, { region: p.region, points: [] });
+    byRegion.get(p.region).points.push(p);
+  });
+
+  return [...byRegion.values()]
+    .map((r) => {
+      const pointIds = new Set(r.points.map((p) => p.id));
+      const reportsCount = reports.filter((rep) => pointIds.has(rep.pointId)).length;
+      return { ...r, reportsCount };
+    })
+    .sort((a, b) => b.points.length - a.points.length);
+}
+
+function renderRegionsPreview() {
+  const regions = getRegionsSummary().slice(0, 4);
+  if (!regions.length) {
+    return `<div class="empty-state" style="padding:16px 0;">Пока нет точек с определённым регионом.</div>`;
+  }
+  return `
+    <div class="region-chip-row">
+      ${regions
+        .map(
+          (r) => `
+        <div class="region-chip" data-open-region="${escapeHtml(r.region)}">
+          <div class="region-chip-name">${r.region}</div>
+          <div class="region-chip-count">${r.points.length} точ. · ${r.reportsCount} отч.</div>
+        </div>`
+        )
+        .join("")}
+    </div>
+    <button class="btn-secondary btn-full" id="btn-open-regions" style="margin-top:10px;">Все регионы</button>
+  `;
+}
+
+function bindRegionChips(container) {
+  container.querySelectorAll("[data-open-region]").forEach((el) => {
+    el.addEventListener("click", () => openRegionDetail(el.dataset.openRegion));
+  });
+  const btn = container.querySelector("#btn-open-regions");
+  if (btn) btn.addEventListener("click", () => openRegions());
+}
+
+function openRegions() {
+  showView("regions");
+  const regions = getRegionsSummary();
+  const container = document.getElementById("regions-content");
+  if (!regions.length) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">🗺️</div>Пока нет точек с определённым регионом. Добавьте точку на карте — регион определится автоматически.</div>`;
+    return;
+  }
+  container.innerHTML = `<div class="card">
+    ${regions
+      .map(
+        (r) => `
+      <div class="point-list-item" data-open-region="${escapeHtml(r.region)}" style="margin-bottom:12px;">
+        <div class="point-mini-score sc-3" style="font-size:12px;">${r.points.length}</div>
+        <div>
+          <div class="card-title">${r.region}</div>
+          <div class="card-sub">${r.points.length} точ${pluralPoints(r.points.length)} · ${r.reportsCount} отчёт${pluralReports(r.reportsCount)}</div>
+        </div>
+      </div>`
+      )
+      .join("")}
+  </div>`;
+  bindRegionChips(container);
+}
+
+function pluralPoints(n) {
+  const m = n % 10, m2 = n % 100;
+  if (m === 1 && m2 !== 11) return "ка";
+  if ([2, 3, 4].includes(m) && ![12, 13, 14].includes(m2)) return "ки";
+  return "ек";
+}
+function pluralReports(n) {
+  const m = n % 10, m2 = n % 100;
+  if (m === 1 && m2 !== 11) return "";
+  if ([2, 3, 4].includes(m) && ![12, 13, 14].includes(m2)) return "а";
+  return "ов";
+}
+
+async function openRegionDetail(regionName) {
+  showView("region-detail");
+  const container = document.getElementById("region-detail-content");
+  container.innerHTML = `<div class="state-block"><div class="spinner"></div></div>`;
+
+  const points = getAllPoints().filter((p) => p.region === regionName);
+  const forecasts = await Promise.all(points.map((p) => getPointForecast(p).catch(() => null)));
+  const pointIds = new Set(points.map((p) => p.id));
+  const reports = Storage.getReports()
+    .filter((r) => pointIds.has(r.pointId))
+    .slice(0, 10);
+
+  container.innerHTML = `
+    <h2>${regionName}</h2>
+    <div class="section-header"><span class="icon">📍</span><h3>Точки (${points.length})</h3></div>
+    <div class="card">
+      ${points.map((p, i) => renderPointListItem(p, forecasts[i]?.result)).join("")}
+    </div>
+    <div class="section-header"><span class="icon">📰</span><h3>Отчёты рыбаков в регионе</h3></div>
+    <div class="card">
+      ${reports.length ? renderRecentReportsFeed(reports) : `<div class="empty-state" style="padding:16px 0;"><div class="icon">📝</div>В этом регионе ещё нет отчётов. Оставьте первый по любой точке отсюда.</div>`}
+    </div>
+  `;
+  bindOpenPointButtons(container);
+}
+
 // ---------- ПРОФИЛЬ ----------
 
 function renderProfile() {
@@ -1368,6 +1497,14 @@ function renderProfile() {
   const earnedCount = achievements.filter((a) => a.earned).length;
 
   container.innerHTML = `
+    <div class="card" style="text-align:center;">
+      <label class="avatar-upload" id="avatar-upload-label">
+        <input type="file" id="profile-avatar-input" accept="image/*" />
+        ${profile.avatar ? `<img src="${profile.avatar}" class="avatar-img" />` : `<span class="avatar-placeholder">📷</span>`}
+      </label>
+      <div class="card-sub" style="margin-top:8px;margin-bottom:0;">Нажмите, чтобы добавить свою фотографию</div>
+    </div>
+
     <div class="card">
       <label class="field-label">Ваше имя</label>
       <input type="text" id="profile-name" value="${profile.name || ""}" />
@@ -1418,6 +1555,16 @@ function renderProfile() {
   `;
   document.getElementById("profile-name").addEventListener("change", (e) => {
     Storage.updateProfile({ name: e.target.value });
+  });
+  document.getElementById("profile-avatar-input").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      Storage.updateProfile({ avatar: reader.result });
+      renderProfile();
+    };
+    reader.readAsDataURL(file);
   });
 }
 

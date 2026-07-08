@@ -23,7 +23,11 @@ export async function reverseGeocode(lat, lon) {
   const addr = data.address || {};
   const town =
     addr.village || addr.town || addr.city || addr.municipality || addr.county || null;
+  // addr.state — в России это область/край/республика, ровно то деление,
+  // по которому строится экран "Регионы"
+  const region = addr.state || null;
 
-  cache.set(key, town);
-  return town;
+  const result = { town, region };
+  cache.set(key, result);
+  return result;
 }

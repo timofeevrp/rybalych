@@ -94,11 +94,21 @@
         <form id="report-form">
           <input type="hidden" id="report-point-id" />
 
+          <div class="card" id="report-point-display" style="margin-bottom:14px;"></div>
+
           <label class="field-label">Клюёт?</label>
           <div class="segmented">
             <button type="button" class="seg-btn active" data-biting="true">🟢 Клюёт</button>
             <button type="button" class="seg-btn" data-biting="false">🔴 Не клюёт</button>
           </div>
+
+          <label class="field-label">Фото улова 📷</label>
+          <label class="photo-upload-box" id="photo-upload-label">
+            <input type="file" id="report-photo" accept="image/*" capture="environment" />
+            <span class="photo-upload-icon">📷</span>
+            <span id="photo-upload-text">Нажмите, чтобы сделать фото или выбрать из галереи</span>
+          </label>
+          <div id="report-photo-preview"></div>
 
           <label class="field-label">Вид рыбы</label>
           <input type="text" id="report-species" placeholder="Например: щука, окунь" />
@@ -114,10 +124,6 @@
 
           <label class="field-label">Комментарий</label>
           <textarea id="report-comment" rows="3" placeholder="Расскажите, как прошла рыбалка"></textarea>
-
-          <label class="field-label">Фото (необязательно)</label>
-          <input type="file" id="report-photo" accept="image/*" />
-          <div id="report-photo-preview"></div>
 
           <label class="field-label">Оценка места</label>
           <div class="stars" id="report-stars">
@@ -158,6 +164,19 @@
       <section id="view-article" class="view">
         <button class="back-btn" data-back="home">← Назад</button>
         <div id="article-content"></div>
+      </section>
+
+      <!-- REGIONS LIST VIEW -->
+      <section id="view-regions" class="view">
+        <button class="back-btn" data-back="home">← Назад</button>
+        <h2>Регионы</h2>
+        <div id="regions-content"></div>
+      </section>
+
+      <!-- REGION DETAIL VIEW -->
+      <section id="view-region-detail" class="view">
+        <button class="back-btn" data-back="regions">← Назад</button>
+        <div id="region-detail-content"></div>
       </section>
 
     </main>
