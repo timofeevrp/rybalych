@@ -1,7 +1,7 @@
 import { SEED_POINTS, FISH_SPECIES } from "./data.js";
 import { Storage } from "./storage.js";
 import { getAstroData } from "./astro.js";
-import { fetchWeather } from "./weather.js";
+import { fetchWeather, weatherIcon } from "./weather.js";
 import { computeScore, scoreInterpretation } from "./score.js";
 import { computeSpeciesLikelihood, DEFAULT_SPECIES_POOL } from "./species.js";
 import { reverseGeocode } from "./geocode.js";
@@ -120,7 +120,14 @@ async function getDailyForecast(point) {
       },
     };
     const result = computeScore({ weather: dayWeather, astro, reports, now: noon });
-    return { date: d.date, tempAir: d.tempAir, waterTempEstimate: d.waterTempEstimate, result };
+    return {
+      date: d.date,
+      tempAir: d.tempAir,
+      waterTempEstimate: d.waterTempEstimate,
+      precip: d.precip,
+      cloud: d.cloud,
+      result,
+    };
   });
   state.dailyCache.set(point.id, { expires: Date.now() + CACHE_TTL_MS, days });
   return days;
@@ -295,7 +302,7 @@ async function loadHome({ skipGeo = false } = {}) {
 
     <div class="card">
       <div class="card-sub">${getGreeting()}! Прогноз на сегодня — ${hero.point.name} и окрестности</div>
-      ${renderScoreWidget(heroResult, heroInterp)}
+      ${renderScoreWidget(heroResult, heroInterp, weatherIcon(heroWeather.current))}
       ${renderConfidenceBadge(heroResult)}
     </div>
 
@@ -347,7 +354,7 @@ async function loadHome({ skipGeo = false } = {}) {
 
     <div class="section-header"><span class="icon">📚</span><h3>Полезные статьи</h3></div>
     <div class="card">
-      ${renderArticlesList(ARTICLES.slice(0, 3))}
+      ${renderArticlesList(ARTICLES.slice(0, 4))}
     </div>
 
     <div class="section-header"><span class="icon">📰</span><h3>Свежие отчёты</h3></div>
@@ -437,7 +444,7 @@ function loadGeomagneticLine() {
     });
 }
 
-function renderScoreWidget(result, interp) {
+function renderScoreWidget(result, interp, icon) {
   return `
     <div class="score-widget">
       <div class="score-circle sc-${interp.tier}">
@@ -445,7 +452,7 @@ function renderScoreWidget(result, interp) {
         <span class="max">/100</span>
       </div>
       <div>
-        <div class="score-label">${interp.emoji} ${interp.label}</div>
+        <div class="score-label">${icon ? `<span class="score-weather-icon">${icon}</span> ` : ""}${interp.emoji} ${interp.label}</div>
         <div class="score-sub">${interp.text}</div>
       </div>
     </div>
@@ -555,6 +562,35 @@ document.getElementById("btn-locate").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("map-search").addEventListener("input", (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  const resultsEl = document.getElementById("map-search-results");
+  if (!q) {
+    resultsEl.classList.add("hidden");
+    resultsEl.innerHTML = "";
+    return;
+  }
+  const matches = getAllPoints()
+    .filter((p) => p.name.toLowerCase().includes(q))
+    .slice(0, 8);
+  if (!matches.length) {
+    resultsEl.innerHTML = `<div class="map-search-result" style="color:var(--gray-500);">Ничего не нашлось</div>`;
+  } else {
+    resultsEl.innerHTML = matches
+      .map((p) => `<div class="map-search-result" data-goto-point="${p.id}">${p.name}<div class="sr-town">${p.town || ""}</div></div>`)
+      .join("");
+  }
+  resultsEl.classList.remove("hidden");
+});
+
+document.getElementById("map-search-results").addEventListener("click", (e) => {
+  const el = e.target.closest("[data-goto-point]");
+  if (!el) return;
+  document.getElementById("map-search").value = "";
+  document.getElementById("map-search-results").classList.add("hidden");
+  openPoint(el.dataset.gotoPoint);
+});
+
 function typeLabel(type) {
   return { lake: "Озеро", river: "Река", reservoir: "Водохранилище", paid: "Платный водоём" }[type] || type;
 }
@@ -612,6 +648,8 @@ async function openPoint(pointOrId) {
       date: days[0]?.date || new Date(),
       tempAir: weather.current.tempAir,
       waterTempEstimate: weather.current.waterTempEstimate,
+      precip: weather.current.precip,
+      cloud: weather.current.cloud,
       result,
       isNow: true,
     };
@@ -661,6 +699,16 @@ async function openPoint(pointOrId) {
             )
             .join("")}
         </div>
+      </div>
+
+      <div class="section-header"><span class="icon">🌦️</span><h3>Погода по часам</h3></div>
+      <div class="card">
+        ${renderHourlyStrip(weather)}
+      </div>
+
+      <div class="section-header"><span class="icon">📉</span><h3>Давление за 48 часов</h3></div>
+      <div class="card">
+        ${renderPressureSparkline(weather)}
       </div>
 
       ${warnings.length ? `
@@ -823,7 +871,7 @@ function updateScoreSlot() {
   const interp = scoreInterpretation(day.result.score);
   const slot = document.getElementById("score-widget-slot");
   slot.innerHTML =
-    renderScoreWidget(day.result, interp) +
+    renderScoreWidget(day.result, interp, weatherIcon(day)) +
     renderConfidenceBadge(day.result) +
     (!day.isNow
       ? `<div class="future-note">Прогноз на будущую дату менее точен: погода и solunar-окна могут измениться.</div>`
@@ -879,6 +927,72 @@ function updateSpeciesSlot(point) {
 
 // Сетка "вид рыбы × время суток" — как в народных рыболовных календарях,
 // но на нашей реальной погодной формуле, а не по одной луне.
+function renderHourlyStrip(weather) {
+  const { hourlyTimes, hourly, nowIdx } = weather;
+  const cells = [];
+  for (let i = nowIdx; i < Math.min(nowIdx + 13, hourlyTimes.length); i++) {
+    cells.push({
+      time: hourlyTimes[i],
+      tempAir: hourly.temperature_2m[i],
+      wind: hourly.wind_speed_10m[i],
+      precip: hourly.precipitation[i],
+      cloud: hourly.cloud_cover[i],
+    });
+  }
+  return `
+    <div class="hourly-strip">
+      ${cells
+        .map(
+          (c, idx) => `
+        <div class="hourly-cell">
+          <div class="hc-time">${idx === 0 ? "Сейчас" : formatTime(c.time)}</div>
+          <div class="hc-icon">${weatherIcon(c)}</div>
+          <div class="hc-temp">${Math.round(c.tempAir)}°</div>
+          <div class="hc-wind">💨 ${Math.round(c.wind)}</div>
+        </div>`
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderPressureSparkline(weather) {
+  const { hourly, nowIdx } = weather;
+  const start = Math.max(0, nowIdx - 24);
+  const end = Math.min(hourly.pressure_msl.length, nowIdx + 25);
+  const slice = hourly.pressure_msl.slice(start, end);
+  const min = Math.min(...slice);
+  const max = Math.max(...slice);
+  const range = max - min || 1;
+  const w = 300, h = 64, pad = 4;
+
+  const points = slice
+    .map((p, i) => {
+      const x = pad + (i / (slice.length - 1)) * (w - pad * 2);
+      const y = h - pad - ((p - min) / range) * (h - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const nowX = (pad + ((nowIdx - start) / (slice.length - 1)) * (w - pad * 2)).toFixed(1);
+  const nowY = (h - pad - ((hourly.pressure_msl[nowIdx] - min) / range) * (h - pad * 2)).toFixed(1);
+
+  return `
+    <svg viewBox="0 0 ${w} ${h}" class="pressure-sparkline" preserveAspectRatio="none">
+      <polyline points="${points}" class="ps-line" />
+      <line x1="${nowX}" y1="0" x2="${nowX}" y2="${h}" class="ps-now-line" />
+      <circle cx="${nowX}" cy="${nowY}" r="3" class="ps-now-dot" />
+    </svg>
+    <div class="ps-labels">
+      <span>−24ч</span>
+      <span>сейчас</span>
+      <span>+24ч</span>
+    </div>
+    <div class="card-sub" style="margin-top:4px;margin-bottom:0;">
+      Мин ${Math.round(min)} · сейчас ${Math.round(hourly.pressure_msl[nowIdx])} · макс ${Math.round(max)} гПа
+    </div>
+  `;
+}
+
 function renderSpeciesGrid(pool, dayWindows, waterTemp) {
   const rows = pool.map((name) => {
     const cells = dayWindows.windows.map((w) => {

@@ -50,7 +50,19 @@ export async function fetchWeather(lat, lon) {
 
   const daily = buildDailyAggregates(hourlyTimes, json.hourly, waterTempEstimate);
 
-  return { current, daily, hourlyTimes, hourly: json.hourly };
+  return { current, daily, hourlyTimes, hourly: json.hourly, nowIdx };
+}
+
+// Простая иконка условий по трём параметрам — для быстрого визуального считывания,
+// не выдаёт себя за точный "код погоды" (Open-Meteo weather_code не запрашиваем).
+export function weatherIcon({ tempAir, precip, cloud }) {
+  if (precip >= 0.3 && tempAir <= 0) return "🌨️";
+  if (precip >= 3) return "🌧️";
+  if (precip >= 0.3) return "🌦️";
+  if (cloud < 20) return "☀️";
+  if (cloud < 55) return "🌤️";
+  if (cloud < 85) return "⛅";
+  return "☁️";
 }
 
 function findClosestIndex(times, target) {

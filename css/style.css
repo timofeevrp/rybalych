@@ -167,6 +167,7 @@ main#views {
 .score-circle .max { font-size: 10px; opacity: 0.8; }
 
 .score-label { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
+.score-weather-icon { font-size: 17px; }
 .score-sub { color: var(--gray-500); font-size: 13px; }
 
 .score-factors {
@@ -259,6 +260,52 @@ h3 { font-size: 15px; margin: 12px 0 6px; }
   background: var(--surface);
   border-bottom: 1px solid var(--gray-200);
   flex-wrap: wrap;
+}
+#map-search {
+  flex: 1 1 100%;
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 14px;
+  background: var(--gray-50);
+  color: var(--text);
+}
+.map-search-results {
+  position: absolute;
+  top: 92px;
+  left: 12px;
+  right: 12px;
+  z-index: 900;
+  background: var(--surface);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.map-search-result {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gray-200);
+  cursor: pointer;
+  font-size: 14px;
+}
+.map-search-result:last-child { border-bottom: none; }
+.map-search-result .sr-town { font-size: 12px; color: var(--gray-500); }
+.map-legend-strip {
+  display: flex;
+  justify-content: space-around;
+  padding: 6px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 11px;
+  color: var(--gray-500);
+}
+.map-legend-strip span { display: flex; align-items: center; gap: 4px; }
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
 }
 .map-filters select {
   border-radius: 10px;
@@ -748,6 +795,37 @@ textarea { resize: vertical; }
   font-size: 13px;
   cursor: pointer;
   text-decoration: underline;
+}
+
+/* HOURLY STRIP */
+.hourly-strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.hourly-cell {
+  flex: 0 0 auto;
+  width: 56px;
+  text-align: center;
+  padding: 6px 2px;
+}
+.hc-time { font-size: 11px; color: var(--gray-500); font-weight: 600; }
+.hc-icon { font-size: 20px; margin: 4px 0; }
+.hc-temp { font-size: 14px; font-weight: 700; }
+.hc-wind { font-size: 10px; color: var(--gray-500); margin-top: 2px; }
+
+/* PRESSURE SPARKLINE */
+.pressure-sparkline { width: 100%; height: 64px; display: block; }
+.ps-line { fill: none; stroke: var(--green-600); stroke-width: 2; }
+.ps-now-line { stroke: var(--gray-500); stroke-width: 1; stroke-dasharray: 3,3; }
+.ps-now-dot { fill: var(--green-700); }
+.ps-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--gray-500);
+  margin-top: 2px;
 }
 
 /* SPECIES GRID (вид рыбы × время суток) */

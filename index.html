@@ -59,6 +59,7 @@
       <!-- MAP VIEW -->
       <section id="view-map" class="view">
         <div class="map-filters">
+          <input type="text" id="map-search" placeholder="🔍 Найти водоём по названию" autocomplete="off" />
           <select id="filter-type">
             <option value="all">Все водоёмы</option>
             <option value="lake">Озёра</option>
@@ -67,6 +68,14 @@
             <option value="paid">Платные</option>
           </select>
           <button id="btn-locate" class="btn-secondary">📍 Моя геолокация</button>
+        </div>
+        <div id="map-search-results" class="map-search-results hidden"></div>
+        <div class="map-legend-strip">
+          <span><i class="legend-dot sc-0"></i>0–15</span>
+          <span><i class="legend-dot sc-1"></i>16–35</span>
+          <span><i class="legend-dot sc-2"></i>36–55</span>
+          <span><i class="legend-dot sc-3"></i>56–75</span>
+          <span><i class="legend-dot sc-4"></i>76–100</span>
         </div>
         <div id="map"></div>
         <div class="map-hint">Нажмите в любом месте карты — покажем потенциал клёва там</div>
