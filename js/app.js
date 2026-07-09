@@ -487,8 +487,14 @@ function initMapIfNeeded() {
   }
   mapInitialized = true;
   const center = state.userLocation || DEFAULT_CENTER;
-  state.map = L.map("map", { zoomControl: false }).setView([center.lat, center.lon], 9);
+  state.map = L.map("map", { zoomControl: false, attributionControl: false }).setView(
+    [center.lat, center.lon],
+    9
+  );
   L.control.zoom({ position: "bottomright" }).addTo(state.map);
+  // Свой attribution-контрол без дефолтного префикса Leaflet (там с версии 1.9 —
+  // флаг Украины в SVG, встроенный в саму библиотеку, никак не связан с тайлами карты).
+  L.control.attribution({ prefix: "Leaflet" }).addTo(state.map);
 
   // Схема — CARTO Voyager (чище и современнее дефолтных тайлов OSM, без подписей-флагов
   // стран на границах, которые многим бросались в глаза). Спутник — Esri World Imagery,
