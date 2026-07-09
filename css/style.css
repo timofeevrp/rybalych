@@ -638,6 +638,7 @@ textarea { resize: vertical; }
 .privacy-notice { font-size: 12px; color: var(--gray-500); margin-top: 6px; }
 .max-field-error { font-size: 12px; color: var(--red); margin-top: 6px; }
 .max-field-ok { font-size: 12px; color: var(--green-600); margin-top: 6px; }
+.max-field-warn { font-size: 12px; color: var(--yellow-400); margin-top: 6px; font-weight: 600; }
 
 .empty-state {
   text-align: center;

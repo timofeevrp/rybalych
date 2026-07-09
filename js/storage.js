@@ -66,6 +66,7 @@ export const Storage = {
       name: "Рыбак",
       createdAt: new Date().toISOString(),
       region: "",
+      city: "",
       fishingExperience: "",
       favoriteFishingTypes: [],
       favoriteWaters: [],

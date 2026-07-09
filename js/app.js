@@ -17,6 +17,21 @@ import { getGearTips } from "./gear.js";
 import { normalizeMaxContact, renderMaxLink } from "./maxlink.js";
 
 const DEFAULT_CENTER = { lat: 55.7558, lon: 37.6173 }; // Москва, фолбэк без геолокации
+
+// Подсказки для поля "Область" в профиле — берём из регионов, которые уже
+// есть в базе точек (нейтральный источник, ничего не придумываем и не
+// перечисляем вручную); поле всё равно текстовое, можно вписать любой другой.
+const RU_REGIONS = [...new Set(SEED_POINTS.map((p) => p.region).filter(Boolean))].sort();
+
+const FISHING_EXPERIENCE_OPTIONS = [
+  { value: "", label: "Не указано" },
+  { value: "less1", label: "Меньше года" },
+  { value: "1-3", label: "1–3 года" },
+  { value: "3-5", label: "3–5 лет" },
+  { value: "5-10", label: "5–10 лет" },
+  { value: "10plus", label: "Больше 10 лет" },
+];
+const FISHING_EXPERIENCE_LABELS = Object.fromEntries(FISHING_EXPERIENCE_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]));
 const CACHE_TTL_MS = 20 * 60 * 1000;
 
 const state = {
@@ -328,16 +343,6 @@ async function loadHome({ skipGeo = false } = {}) {
         <div class="hub-label">Отчёты</div>
         <div class="hub-sub">Что ловят рядом</div>
       </div>
-      <div class="hub-card" data-hub="articles">
-        <div class="hub-icon">📚</div>
-        <div class="hub-label">Статьи</div>
-        <div class="hub-sub">Советы и разборы</div>
-      </div>
-      <div class="hub-card" data-hub="shop">
-        <div class="hub-icon">🎒</div>
-        <div class="hub-label">Что взять</div>
-        <div class="hub-sub">Снасти по погоде</div>
-      </div>
     </div>
 
     ${geoNotice}
@@ -397,8 +402,6 @@ async function loadHome({ skipGeo = false } = {}) {
     document.getElementById("home-forecast-anchor").scrollIntoView({ behavior: "smooth", block: "start" });
   });
   contentEl.querySelector('[data-hub="reports"]').addEventListener("click", () => openRegions());
-  contentEl.querySelector('[data-hub="articles"]').addEventListener("click", () => openArticles());
-  contentEl.querySelector('[data-hub="shop"]').addEventListener("click", () => openGearScreen(hero.point, heroWeather));
 
   contentEl.querySelector('[data-action="report"]').addEventListener("click", () => {
     state.viewStack = ["point", "report"];
@@ -1806,7 +1809,8 @@ function buildPublicProfile(profile) {
     avatarUrl: p.showAvatar ? profile.avatar : null,
     level: current.name,
     region: p.showRegion ? profile.region : "",
-    fishingExperience: p.showFishingExperience ? profile.fishingExperience : "",
+    city: p.showRegion ? profile.city : "",
+    fishingExperience: p.showFishingExperience ? FISHING_EXPERIENCE_LABELS[profile.fishingExperience] || "" : "",
     favoriteFishingTypes: p.showFavoriteFishingTypes ? profile.favoriteFishingTypes || [] : [],
     favoriteWaters: p.showFavoriteWaters ? profile.favoriteWaters || [] : [],
     reportsCount: stats.reportsCount,
@@ -1845,7 +1849,7 @@ function openPublicProfile() {
     <div class="card" style="text-align:center;">
       ${pub.avatarUrl ? `<img src="${pub.avatarUrl}" class="avatar-img" style="width:72px;height:72px;border-radius:50%;" />` : `<span class="avatar-placeholder">🎣</span>`}
       <div style="font-weight:700;font-size:18px;margin-top:8px;">${escapeHtml(pub.name)}</div>
-      <div class="card-sub">${escapeHtml(pub.level)}${pub.region ? " · " + escapeHtml(pub.region) : ""}</div>
+      <div class="card-sub">${escapeHtml(pub.level)}${pub.region ? " · " + escapeHtml([pub.city, pub.region].filter(Boolean).join(", ")) : ""}</div>
     </div>
 
     <div class="stats-grid">
@@ -1943,10 +1947,17 @@ function renderProfile() {
     </div>
 
     <div class="card">
-      <label class="field-label">Регион</label>
-      <input type="text" id="profile-region" value="${escapeHtml(profile.region || "")}" placeholder="Например: Московская область" />
+      <label class="field-label">Область</label>
+      <input type="text" id="profile-region" list="profile-region-options" value="${escapeHtml(profile.region || "")}" placeholder="Например: Московская область" />
+      <datalist id="profile-region-options">
+        ${RU_REGIONS.map((r) => `<option value="${escapeHtml(r)}"></option>`).join("")}
+      </datalist>
+      <label class="field-label">Город или посёлок</label>
+      <input type="text" id="profile-city" value="${escapeHtml(profile.city || "")}" placeholder="Например: Дмитров" />
       <label class="field-label">Стаж рыбалки</label>
-      <input type="text" id="profile-experience" value="${escapeHtml(profile.fishingExperience || "")}" placeholder="Например: 5 лет" />
+      <select id="profile-experience">
+        ${FISHING_EXPERIENCE_OPTIONS.map((o) => `<option value="${o.value}" ${profile.fishingExperience === o.value ? "selected" : ""}>${o.label}</option>`).join("")}
+      </select>
     </div>
 
     <div class="section-header"><span class="icon">💬</span><h3>MAX-контакт</h3></div>
@@ -2046,8 +2057,11 @@ function renderProfile() {
   document.getElementById("profile-region").addEventListener("change", (e) => {
     Storage.updateProfile({ region: e.target.value.trim() });
   });
+  document.getElementById("profile-city").addEventListener("change", (e) => {
+    Storage.updateProfile({ city: e.target.value.trim() });
+  });
   document.getElementById("profile-experience").addEventListener("change", (e) => {
-    Storage.updateProfile({ fishingExperience: e.target.value.trim() });
+    Storage.updateProfile({ fishingExperience: e.target.value });
   });
 
   const maxFeedback = document.getElementById("max-field-feedback");
@@ -2058,7 +2072,9 @@ function renderProfile() {
       Storage.updateProfile({ contact: { ...Storage.getProfile().contact, maxRaw: e.target.value, maxSafeUrl: "" } });
       return;
     }
-    maxFeedback.innerHTML = safeUrl ? `<div class="max-field-ok">MAX-контакт сохранён.</div>` : "";
+    maxFeedback.innerHTML = safeUrl
+      ? `<div class="max-field-warn">Сохранено. Рыбаки смогут написать вам в MAX, как только вы включите показ контакта выше.</div>`
+      : "";
     Storage.updateProfile({ contact: { maxRaw: e.target.value, maxSafeUrl: safeUrl } });
   });
 
