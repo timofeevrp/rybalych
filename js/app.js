@@ -492,7 +492,8 @@ function initMapIfNeeded() {
 
   // Схема — CARTO Voyager (чище и современнее дефолтных тайлов OSM, без подписей-флагов
   // стран на границах, которые многим бросались в глаза). Спутник — Esri World Imagery,
-  // удобно смотреть форму берега и растительность вокруг водоёма.
+  // удобно смотреть форму берега и растительность вокруг водоёма. Рельеф — OpenTopoMap,
+  // горизонтали высот, чётче видна форма берегов на природе.
   const schemeLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
     attribution: "© OpenStreetMap, © CARTO",
     maxZoom: 19,
@@ -502,11 +503,26 @@ function initMapIfNeeded() {
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     { attribution: "Tiles © Esri", maxZoom: 19 }
   );
+  const terrainLayer = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap, © OpenTopoMap (CC-BY-SA)",
+    maxZoom: 17,
+    subdomains: "abc",
+  });
+
+  // Изобаты (линии глубин) — покрытие есть в основном для морей и крупных судоходных
+  // водоёмов, для небольших озёр слой обычно пустой. Необязательный оверлей, не базовый слой.
+  const depthOverlay = L.tileLayer("https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png", {
+    attribution: "© OpenSeaMap",
+    maxZoom: 18,
+    opacity: 0.8,
+  });
+
   L.control
-    .layers({ "🗺️ Схема": schemeLayer, "🛰️ Спутник": satelliteLayer }, null, {
-      position: "bottomright",
-      collapsed: true,
-    })
+    .layers(
+      { "🗺️ Схема": schemeLayer, "🛰️ Спутник": satelliteLayer, "⛰️ Рельеф": terrainLayer },
+      { "🌊 Глубины (где есть данные)": depthOverlay },
+      { position: "bottomright", collapsed: true }
+    )
     .addTo(state.map);
 
   state.markersLayer = L.layerGroup().addTo(state.map);
