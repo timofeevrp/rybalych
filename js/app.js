@@ -257,7 +257,6 @@ async function loadHome({ skipGeo = false } = {}) {
   contentEl.classList.remove("hidden");
 
   if (!withForecast.length) {
-    document.getElementById("header-status").textContent = "Твоё приложение для рыбалки";
     contentEl.innerHTML = `<div class="empty-state"><div class="icon">🎣</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.</div>`;
     return;
   }
@@ -270,8 +269,6 @@ async function loadHome({ skipGeo = false } = {}) {
 
   const dayWindows = computeDayWindows(heroWeather, hero.point.lat, hero.point.lon, Storage.getReports(hero.point.id));
   const warnings = computeWarnings(heroWeather.current, month);
-
-  document.getElementById("header-status").textContent = `Сегодня клёв: ${heroInterp.label.toLowerCase()}`;
 
   const geoNotice = state.geoDenied
     ? `<div class="card" style="background:var(--green-100);border:none;">🧭 Не вижу вашу геолокацию, показываю проверенные места по Москве и области. Разрешите доступ в браузере или выберите точку на карте вручную.</div>`
