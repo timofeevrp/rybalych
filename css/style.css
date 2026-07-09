@@ -1,30 +1,32 @@
+/* Приложение всегда в тёмной теме — так решил пользователь (нравится
+   больше, чем светлая), системная тема light/dark больше не влияет. */
 :root {
   --green-900: #163d29;
-  --green-700: #1f5e3e;
+  --green-700: #3a8f61;
   --green-600: #2e7d4f;
   --green-400: #4caf7d;
-  --green-100: #e7f3ea;
+  --green-100: #1e3226;
   --white: #ffffff;
-  --surface: #ffffff;
-  --gray-50: #f5f7f5;
-  --gray-200: #e2e6e3;
-  --gray-500: #6b7770;
-  --text: #1a221d;
+  --surface: #1c2420;
+  --gray-50: #141a17;
+  --gray-200: #2c3630;
+  --gray-500: #93a099;
+  --text: #e8ede9;
   --text-on-yellow: #1a221d;
   --red: #d9483c;
   --orange: #e2872f;
   --yellow: #d9b32b;
-  --star-empty: #d5dad6;
+  --star-empty: #45524a;
   --radius: 18px;
-  --shadow: 0 2px 14px rgba(22, 61, 41, 0.06);
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 
   /* БРЕНДОВЫЙ ЖЁЛТЫЙ — акцент действия/энергии (CTA, активные состояния),
      отдельно от --yellow (статусный янтарный: звёзды, sc-2, confidence-medium),
      чтобы "средний балл" и "нажми сюда" не путались одним цветом. */
   --yellow-400: #f5b82e;
   --yellow-600: #c98f0a;
-  --yellow-100: #fdf0d0;
-  --cream: #fbf8f0;
+  --yellow-100: #3a2f10;
+  --cream: #0d100d;
 
   --radius-sm: 10px;
   --radius-md: 14px;
@@ -32,29 +34,9 @@
   --transition-fast: 120ms ease;
 
   /* Фон шапки/онбординга — отдельный токен от --green-700 (тот остаётся
-     цветом текста/иконок и должен читаться зелёным, а не чернеть вместе с фоном). */
-  --header-bg: var(--green-700);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #1c2420;
-    --gray-50: #141a17;
-    --gray-200: #2c3630;
-    --gray-500: #93a099;
-    --text: #e8ede9;
-    --green-100: #1e3226;
-    /* светлее, чем базовый зелёный — иначе зелёный текст (бейджи, кнопки, подписи)
-       теряет контраст на тёмном фоне; используется и как фон (шапка, score sc-4) */
-    --green-700: #3a8f61;
-    --star-empty: #45524a;
-    --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-    --yellow-100: #3a2f10;
-    --cream: #0d100d;
-    /* почти чёрный фон шапки/онбординга + жёлтый акцент — в духе постерной
-       айдентики (карась-бейдж), которая понравилась пользователю */
-    --header-bg: #0f1210;
-  }
+     цветом текста/иконок и должен читаться зелёным, а не чернеть вместе с фоном).
+     Почти чёрный, в духе постерной айдентики (карась-бейдж). */
+  --header-bg: #0f1210;
 }
 
 * { box-sizing: border-box; }
@@ -66,7 +48,7 @@ body {
   color: var(--text);
   font-size: 16px;
   line-height: 1.4;
-  color-scheme: light dark;
+  color-scheme: dark;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -738,11 +720,8 @@ textarea { resize: vertical; }
   margin-top: 8px;
 }
 .confidence-high { background: var(--green-100); color: var(--green-700); }
-.confidence-medium { background: rgba(217, 179, 43, 0.18); color: #8a6d10; }
+.confidence-medium { background: rgba(217, 179, 43, 0.18); color: var(--yellow); }
 .confidence-low { background: var(--gray-200); color: var(--gray-500); }
-@media (prefers-color-scheme: dark) {
-  .confidence-medium { color: var(--yellow); }
-}
 
 /* WHY-SECTION (полный разбор факторов) */
 .factor-row {
