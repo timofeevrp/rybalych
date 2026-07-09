@@ -12,11 +12,11 @@ import { computeWarnings } from "./warnings.js";
 import { computeAchievements } from "./achievements.js";
 import { getMockLeaderboard, getMonthTheme, MONTHLY_PRIZE } from "./leaderboard.js";
 import { fetchKpIndex, kpLabel } from "./geomagnetic.js";
+import { ARTICLES, getArticleById, estimateReadMinutes } from "./articles.js";
+import { getGearTips } from "./gear.js";
 
 const DEFAULT_CENTER = { lat: 55.7558, lon: 37.6173 }; // Москва, фолбэк без геолокации
 const CACHE_TTL_MS = 20 * 60 * 1000;
-// TODO: заменить на реальный канал, когда будет готов
-const ZEN_URL = "https://dzen.ru/";
 
 const state = {
   userLocation: null,
@@ -258,7 +258,7 @@ async function loadHome({ skipGeo = false } = {}) {
 
   if (!withForecast.length) {
     document.getElementById("header-status").textContent = "";
-    contentEl.innerHTML = `<div class="empty-state"><div class="icon">🎣</div>Не получилось загрузить прогноз — проверьте интернет-соединение и потяните экран, чтобы попробовать ещё раз.</div>`;
+    contentEl.innerHTML = `<div class="empty-state"><div class="icon">🎣</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.</div>`;
     return;
   }
 
@@ -274,7 +274,7 @@ async function loadHome({ skipGeo = false } = {}) {
   document.getElementById("header-status").textContent = `Сегодня клёв: ${heroInterp.label.toLowerCase()}`;
 
   const geoNotice = state.geoDenied
-    ? `<div class="card" style="background:var(--green-100);border:none;">🧭 Не вижу вашу геолокацию, поэтому показываю проверенные места по Москве и области. Разрешите доступ в браузере или откройте карту — можно выбрать точку вручную.</div>`
+    ? `<div class="card" style="background:var(--green-100);border:none;">🧭 Не вижу вашу геолокацию, показываю проверенные места по Москве и области. Разрешите доступ в браузере или выберите точку на карте вручную.</div>`
     : "";
 
   const bestPoints = withForecast
@@ -312,15 +312,15 @@ async function loadHome({ skipGeo = false } = {}) {
         <div class="hub-label">Статьи</div>
       </div>
       <div class="hub-card" data-hub="shop">
-        <div class="hub-icon">🛒</div>
-        <div class="hub-label">Товары</div>
+        <div class="hub-icon">🎒</div>
+        <div class="hub-label">Что взять</div>
       </div>
     </div>
 
     ${geoNotice}
 
     <div class="card" id="home-forecast-anchor">
-      <div class="card-sub">${getGreeting()}! Прогноз на сегодня — ${hero.point.name} и окрестности</div>
+      <div class="card-sub">${getGreeting()}! Прогноз на сегодня: ${hero.point.name} и окрестности</div>
       ${renderScoreWidget(heroResult, heroInterp, weatherIcon(heroWeather.current))}
       ${renderConfidenceBadge(heroResult)}
     </div>
@@ -370,10 +370,8 @@ async function loadHome({ skipGeo = false } = {}) {
     document.getElementById("home-forecast-anchor").scrollIntoView({ behavior: "smooth", block: "start" });
   });
   contentEl.querySelector('[data-hub="reports"]').addEventListener("click", () => openRegions());
-  contentEl.querySelector('[data-hub="articles"]').addEventListener("click", () => {
-    window.open(ZEN_URL, "_blank");
-  });
-  contentEl.querySelector('[data-hub="shop"]').addEventListener("click", () => openProductsStub());
+  contentEl.querySelector('[data-hub="articles"]').addEventListener("click", () => openArticles());
+  contentEl.querySelector('[data-hub="shop"]').addEventListener("click", () => openGearScreen(hero.point, heroWeather));
 
   contentEl.querySelector('[data-action="report"]').addEventListener("click", () => {
     state.viewStack = ["point", "report"];
@@ -451,7 +449,7 @@ function renderScoreWidget(result, interp, icon) {
     <div class="score-factors">
       ${result.topFactors.map((f) => `<span class="factor-chip">${f}</span>`).join("")}
     </div>
-    ${!result.hasReports ? `<div class="score-sub" style="margin-top:8px;">Свежих отчётов по этой точке пока нет — прогноз строится на погоде и луне. Оставьте первый отчёт, и он станет точнее для всех рыбаков рядом.</div>` : ""}
+    ${!result.hasReports ? `<div class="score-sub" style="margin-top:8px;">Свежих отчётов пока нет, прогноз строится на погоде и луне. Оставьте первый, и он станет точнее для всех рыбаков рядом.</div>` : ""}
   `;
 }
 
@@ -766,11 +764,11 @@ async function openPoint(pointOrId) {
       <div class="section-header"><span class="icon">📅</span><h3>Клёв по видам и времени суток</h3></div>
       <div class="card">
         ${renderSpeciesGrid(speciesPool, dayWindows, weather.current.waterTempEstimate)}
-        <div class="card-sub" style="margin-top:8px;margin-bottom:0;">Баллы 0–100, как и общий прогноз — не проценты вероятности.</div>
+        <div class="card-sub" style="margin-top:8px;margin-bottom:0;">Баллы 0–100, как и общий прогноз. Это не проценты вероятности.</div>
       </div>
 
       <div class="quick-report-box">
-        <div class="qr-label">Как сейчас клюёт? Отметьте за секунду — это сразу улучшит прогноз</div>
+        <div class="qr-label">Как сейчас клюёт? Отметьте за секунду, это сразу улучшит прогноз</div>
         <div class="quick-report-row">
           <button class="qr-btn qr-yes" id="btn-quick-yes">🟢 Клюёт</button>
           <button class="qr-btn qr-no" id="btn-quick-no">🔴 Не клюёт</button>
@@ -873,7 +871,7 @@ function submitQuickReport(point, isAdhoc, isBiting) {
   const statsAfter = getProfileStats();
   const newAchievements = checkNewAchievements(statsBefore, statsAfter);
 
-  showToast(isBiting ? "Отмечено: клюёт! Спасибо, учли в прогнозе. 🎣" : "Отмечено: не клюёт. Тоже полезная информация — спасибо!");
+  showToast(isBiting ? "Отмечено: клюёт! Спасибо, учли в прогнозе. 🎣" : "Отмечено: не клюёт. Тоже полезная информация, спасибо!");
   newAchievements.forEach((a, i) => {
     setTimeout(() => showToast(`🏅 Новое достижение: «${a.title}»`), 1400 + i * 1800);
   });
@@ -951,14 +949,14 @@ function updateSpeciesSlot(point) {
   const slot = document.getElementById("species-slot");
   slot.innerHTML = `
     <div class="card-title">Что может клевать ${isGeneric ? "в этом районе" : "здесь"}</div>
-    ${isGeneric ? `<div class="card-sub">Виды для этой точки неизвестны — оценка ориентировочная для региона.</div>` : ""}
+    ${isGeneric ? `<div class="card-sub">Виды для этой точки неизвестны, оценка ориентировочная для региона.</div>` : ""}
     ${list
-      .map((s) => {
+      .map((s, i) => {
         const tier = scoreInterpretation(s.score).tier;
         return `
-        <div class="species-row">
+        <div class="species-row ${i === 0 ? "top" : ""}">
           <div class="species-row-head">
-            <span class="species-name">${s.name}</span>
+            <span class="species-name">${i === 0 ? "🏆 " : ""}${s.name}</span>
             <span class="species-score sc-${tier}">${s.score}/100</span>
           </div>
           <div class="species-bait">🪱 ${s.bait} · 🎣 ${s.tackle}</div>
@@ -1152,7 +1150,7 @@ function renderSpeciesGrid(pool, dayWindows, waterTemp) {
 
 function renderReportsList(reports) {
   if (!reports.length) {
-    return `<div class="empty-state"><div class="icon">📝</div>Отчётов здесь пока нет. Будьте первым — это займёт минуту и поможет другим рыбакам.</div>`;
+    return `<div class="empty-state"><div class="icon">📝</div>Отчётов здесь пока нет. Оставьте первый — это минута, зато другим рыбакам будет полезно.</div>`;
   }
   return reports
     .map((r) => {
@@ -1222,7 +1220,7 @@ document.getElementById("report-photo").addEventListener("change", (e) => {
     state.reportSelection.photoDataUrl = reader.result;
     document.getElementById("report-photo-preview").innerHTML = `<img src="${reader.result}" />`;
     document.getElementById("photo-upload-label").classList.add("has-photo");
-    document.getElementById("photo-upload-text").textContent = "✅ Фото добавлено — можно заменить";
+    document.getElementById("photo-upload-text").textContent = "✅ Фото добавлено, можно заменить";
   };
   reader.readAsDataURL(file);
 });
@@ -1274,7 +1272,7 @@ async function renderFavorites() {
       <div class="empty-state">
         <div class="icon">🗺️</div>
         Здесь появятся ваши проверенные места.<br>
-        Откройте карту, найдите точку и нажмите «Сохранить» — в следующий раз прогноз по ней будет на расстоянии одного тапа.
+        Откройте карту, найдите точку и нажмите «Сохранить». В следующий раз прогноз по ней будет в один тап.
         <div style="margin-top:14px;">
           <button class="btn-primary" id="fav-goto-map">Найти места на карте</button>
         </div>
@@ -1408,8 +1406,64 @@ function renderLeaderboardRow(b) {
     </div>`;
 }
 
-function openProductsStub() {
-  showView("products");
+// ---------- СТАТЬИ ----------
+
+function openArticles() {
+  showView("articles");
+  const container = document.getElementById("articles-content");
+  container.innerHTML = `<div class="card">
+    ${ARTICLES.map(
+      (a) => `
+      <div class="point-list-item" data-open-article="${a.id}" style="margin-bottom:12px;align-items:flex-start;">
+        <div class="hub-icon" style="width:44px;height:44px;font-size:20px;flex-shrink:0;">${a.icon}</div>
+        <div>
+          <div class="card-title" style="margin-bottom:0;">${a.title}</div>
+          <div class="card-sub" style="margin-bottom:4px;">${a.category} · ${estimateReadMinutes(a)} мин чтения</div>
+          <div style="font-size:13px;color:var(--gray-500);">${a.summary}</div>
+        </div>
+      </div>`
+    ).join("")}
+  </div>`;
+  container.querySelectorAll("[data-open-article]").forEach((el) => {
+    el.addEventListener("click", () => openArticleDetail(el.dataset.openArticle));
+  });
+}
+
+function openArticleDetail(id) {
+  const article = getArticleById(id);
+  if (!article) return;
+  showView("article-detail");
+  document.getElementById("article-detail-content").innerHTML = `
+    <div class="card-sub" style="margin-bottom:2px;">${article.category} · ${estimateReadMinutes(article)} мин чтения</div>
+    <h2 style="margin-top:2px;">${article.icon} ${article.title}</h2>
+    <div class="card">
+      ${article.body.map((p) => `<p style="margin:0 0 12px;font-size:14px;line-height:1.6;">${p}</p>`).join("")}
+    </div>
+  `;
+}
+
+// ---------- ЧТО ВЗЯТЬ С СОБОЙ ----------
+
+function openGearScreen(point, weather) {
+  showView("gear");
+  const container = document.getElementById("gear-content");
+  if (!point || !weather) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">🎒</div>Не нашли погоду для ближайшей точки. Откройте карту и выберите место вручную.</div>`;
+    return;
+  }
+  const tips = getGearTips(weather.current);
+  container.innerHTML = `
+    <div class="card-sub" style="margin-bottom:12px;">По погоде у точки «${point.name}» на сегодня</div>
+    ${tips.length
+      ? `<div class="card">
+          ${tips.map((t) => `
+            <div class="mini-report">
+              <div style="font-size:20px;">${t.icon}</div>
+              <div style="align-self:center;font-size:14px;">${t.text}</div>
+            </div>`).join("")}
+        </div>`
+      : `<div class="empty-state"><div class="icon">☀️</div>Погода спокойная, ничего особенного брать не нужно.</div>`}
+  `;
 }
 
 function openLeaderboard() {
@@ -1432,7 +1486,7 @@ function openLeaderboard() {
       <div class="lb-prize-sponsor">${MONTHLY_PRIZE.sponsor}</div>
       <div class="lb-prize-rule">${MONTHLY_PRIZE.rule}</div>
     </div>
-    <div class="empty-state" style="font-size:12px;">Это демо-версия рейтинга: соперники здесь — тестовые имена. Настоящий общий зачёт заработает, когда у приложения появится сервер и другие рыбаки на связи.</div>
+    <div class="empty-state" style="font-size:12px;">Это демо-версия рейтинга: соперники здесь — тестовые имена. Настоящий зачёт заработает, когда к приложению подключатся другие рыбаки.</div>
   `;
 }
 
@@ -1470,7 +1524,7 @@ function openRegions() {
   const regions = getRegionsSummary();
   const container = document.getElementById("regions-content");
   if (!regions.length) {
-    container.innerHTML = `<div class="empty-state"><div class="icon">🗺️</div>Пока нет точек с определённым регионом. Добавьте точку на карте — регион определится автоматически.</div>`;
+    container.innerHTML = `<div class="empty-state"><div class="icon">🗺️</div>Пока нет точек с определённым регионом. Добавьте точку на карте, регион определится автоматически.</div>`;
     return;
   }
   container.innerHTML = `<div class="card">
@@ -1561,7 +1615,7 @@ function renderProfile() {
           <div class="card-title" style="margin-bottom:0;">${current.name}</div>
           ${next
             ? `<div class="card-sub">До «${next.name}»: ${stats.reportsCount}/${next.threshold} отчётов</div>`
-            : `<div class="card-sub">Вы достигли максимального уровня — легенда водоёма!</div>`}
+            : `<div class="card-sub">Вы достигли максимального уровня. Легенда водоёма!</div>`}
         </div>
       </div>
       ${next ? `<div class="level-bar"><div class="level-bar-fill" style="width:${progress}%;"></div></div>` : ""}
@@ -1593,7 +1647,7 @@ function renderProfile() {
     <div class="card" style="margin-top:14px;">
       <div class="card-title">Зачем оставлять отчёты?</div>
       <div class="card-sub" style="margin-bottom:0;">
-        Каждый отчёт делает прогноз точнее — не только для вас, но и для рыбаков рядом. Плюс это быстрый способ расти в уровне и открывать новые достижения.
+        Каждый отчёт делает прогноз точнее для вас и для рыбаков рядом. И это быстрый способ расти в уровне и открывать достижения.
       </div>
     </div>
 

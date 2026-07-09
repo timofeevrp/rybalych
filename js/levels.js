@@ -2,10 +2,10 @@
 
 export const LEVELS = [
   { threshold: 0, name: "Новичок", icon: "🎣" },
-  { threshold: 3, name: "Начинающий рыбак", icon: "🐟" },
-  { threshold: 10, name: "Знаток водоёма", icon: "🥈" },
-  { threshold: 25, name: "Эксперт региона", icon: "🥇" },
-  { threshold: 50, name: "Легенда Саныча", icon: "👑" },
+  { threshold: 3, name: "Рыбак", icon: "🐟" },
+  { threshold: 10, name: "Бывалый", icon: "🥈" },
+  { threshold: 25, name: "Мастер клёва", icon: "🥇" },
+  { threshold: 50, name: "Легенда водоёма", icon: "👑" },
 ];
 
 export function getLevelInfo(reportsCount) {

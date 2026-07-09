@@ -32,6 +32,6 @@ export function getMockLeaderboard(userName, userReportsCount) {
 
 export const MONTHLY_PRIZE = {
   title: "Воблер + коробка приманок",
-  sponsor: "от партнёров «Саныча»",
+  sponsor: "от партнёров Рыбалыча",
   rule: "Топ-3 рейтинга месяца получают приз. Учитываются только отчёты, подтверждённые модератором (фото рыбы на фоне точки или весов).",
 };
