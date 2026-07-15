@@ -31,3 +31,34 @@ export async function reverseGeocode(lat, lon) {
   cache.set(key, result);
   return result;
 }
+
+// Поиск по названию через тот же Nominatim — в отличие от нашей базы (~20
+// заведённых точек), находит любой водоём/город, который есть в OpenStreetMap.
+// Используется как fallback, когда в своей базе ничего не нашлось.
+const searchCache = new Map();
+export async function searchPlaces(query) {
+  const key = query.trim().toLowerCase();
+  if (!key) return [];
+  if (searchCache.has(key)) return searchCache.get(key);
+
+  const params = new URLSearchParams({
+    q: query,
+    format: "json",
+    addressdetails: "1",
+    "accept-language": "ru",
+    countrycodes: "ru",
+    limit: "6",
+  });
+
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+  if (!res.ok) throw new Error(`Geocode search error: ${res.status}`);
+  const data = await res.json();
+  const results = data.map((item) => ({
+    name: item.display_name.split(",")[0],
+    fullLabel: item.display_name,
+    lat: parseFloat(item.lat),
+    lon: parseFloat(item.lon),
+  }));
+  searchCache.set(key, results);
+  return results;
+}

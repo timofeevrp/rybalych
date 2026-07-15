@@ -4,7 +4,7 @@ import { getAstroData } from "./astro.js";
 import { fetchWeather, weatherIcon } from "./weather.js";
 import { computeScore, scoreInterpretation } from "./score.js";
 import { computeSpeciesLikelihood, DEFAULT_SPECIES_POOL } from "./species.js";
-import { reverseGeocode } from "./geocode.js";
+import { reverseGeocode, searchPlaces } from "./geocode.js";
 import { getLevelInfo } from "./levels.js";
 import { computeDayWindows } from "./timewindows.js";
 import { computeHourlyBiteSeries } from "./bitechart.js";
@@ -163,6 +163,7 @@ function showView(viewId, { pushHistory = true } = {}) {
   if (viewId === "map") initMapIfNeeded();
   if (viewId === "favorites") renderFavorites();
   if (viewId === "profile") renderProfile();
+  if (viewId === "home" && homeLoadFailed) loadHome();
 }
 
 function goBack() {
@@ -252,6 +253,9 @@ async function loadHome({ skipGeo = false } = {}) {
   loadingEl.innerHTML = renderHomeSkeleton();
   loadingEl.classList.remove("hidden");
   contentEl.classList.add("hidden");
+  homeLoadFailed = false;
+
+  try {
 
   const loc = skipGeo ? null : await getLocation();
   state.userLocation = loc || DEFAULT_CENTER;
@@ -273,7 +277,9 @@ async function loadHome({ skipGeo = false } = {}) {
   contentEl.classList.remove("hidden");
 
   if (!withForecast.length) {
-    contentEl.innerHTML = `<div class="empty-state"><div class="icon">🎣</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.</div>`;
+    homeLoadFailed = true;
+    contentEl.innerHTML = `<div class="empty-state"><div class="icon">🎣</div>Не получилось загрузить прогноз. Проверьте интернет и попробуйте ещё раз.<br><button class="btn-primary" style="margin-top:12px;" id="retry-home">Повторить</button></div>`;
+    document.getElementById("retry-home").addEventListener("click", () => loadHome());
     return;
   }
 
@@ -418,6 +424,16 @@ async function loadHome({ skipGeo = false } = {}) {
   if (geoAllowBtn) geoAllowBtn.addEventListener("click", () => loadHome());
   const geoMapBtn = document.getElementById("btn-geo-map");
   if (geoMapBtn) geoMapBtn.addEventListener("click", () => showView("map"));
+
+  } catch (err) {
+    // Раньше при сбое сети экран навсегда оставался с крутилкой — теперь
+    // явная ошибка с кнопкой "Повторить", как и на карточке точки.
+    homeLoadFailed = true;
+    loadingEl.classList.add("hidden");
+    contentEl.classList.remove("hidden");
+    contentEl.innerHTML = `<div class="empty-state"><div class="icon">📡</div>Не получилось загрузить главную. Проверьте интернет и попробуйте ещё раз.<br><button class="btn-primary" style="margin-top:12px;" id="retry-home">Повторить</button></div>`;
+    document.getElementById("retry-home").addEventListener("click", () => loadHome());
+  }
 }
 
 // Более подробная карточка места для "Куда поехать сегодня" на главной —
@@ -534,6 +550,7 @@ function bindOpenPointButtons(container) {
 
 // ---------- КАРТА ----------
 
+let homeLoadFailed = false;
 let mapInitialized = false;
 function initMapIfNeeded() {
   if (mapInitialized) {
@@ -709,33 +726,87 @@ document.getElementById("btn-locate").addEventListener("click", async () => {
   }
 });
 
+let searchDebounceTimer = null;
+let searchRequestId = 0;
+
+function renderLocalMatches(matches) {
+  return matches
+    .map((p) => `<div class="map-search-result" data-goto-point="${p.id}">${p.name}<div class="sr-town">${p.town || ""}</div></div>`)
+    .join("");
+}
+
 document.getElementById("map-search").addEventListener("input", (e) => {
-  const q = e.target.value.trim().toLowerCase();
+  const rawQuery = e.target.value.trim();
+  const q = rawQuery.toLowerCase();
   const resultsEl = document.getElementById("map-search-results");
+  clearTimeout(searchDebounceTimer);
+  const requestId = ++searchRequestId;
+
   if (!q) {
     resultsEl.classList.add("hidden");
     resultsEl.innerHTML = "";
     return;
   }
+
   const matches = getAllPoints()
     .filter((p) => p.name.toLowerCase().includes(q))
     .slice(0, 8);
-  if (!matches.length) {
-    resultsEl.innerHTML = `<div class="map-search-result" style="color:var(--gray-500);">Ничего не нашлось</div>`;
-  } else {
-    resultsEl.innerHTML = matches
-      .map((p) => `<div class="map-search-result" data-goto-point="${p.id}">${p.name}<div class="sr-town">${p.town || ""}</div></div>`)
-      .join("");
-  }
+
+  resultsEl.innerHTML = matches.length
+    ? renderLocalMatches(matches)
+    : `<div class="map-search-result" style="color:var(--gray-500);">Ищем «${escapeHtml(rawQuery)}» на карте...</div>`;
   resultsEl.classList.remove("hidden");
+
+  // В своей базе только около 20 точек — если там пусто или мало, ищем
+  // название на реальной карте (Nominatim/OSM), с задержкой, чтобы не
+  // долбить бесплатный geo-сервис на каждое нажатие клавиши.
+  if (matches.length >= 3) return;
+  searchDebounceTimer = setTimeout(async () => {
+    let remote = [];
+    try {
+      remote = await searchPlaces(rawQuery);
+    } catch {
+      // тихо игнорируем — локальные совпадения (если были) уже показаны
+    }
+    if (requestId !== searchRequestId) return; // пользователь уже печатает дальше
+
+    if (!matches.length && !remote.length) {
+      resultsEl.innerHTML = `<div class="map-search-result" style="color:var(--gray-500);">Ничего не нашлось</div>`;
+      return;
+    }
+    const remoteHtml = remote
+      .map(
+        (r, i) => `
+        <div class="map-search-result" data-goto-remote="${i}">
+          🌍 ${escapeHtml(r.name)}
+          <div class="sr-town">${escapeHtml(r.fullLabel)}</div>
+        </div>`
+      )
+      .join("");
+    resultsEl.innerHTML = renderLocalMatches(matches) + remoteHtml;
+    resultsEl.dataset.remoteResults = JSON.stringify(remote);
+  }, 400);
 });
 
 document.getElementById("map-search-results").addEventListener("click", (e) => {
-  const el = e.target.closest("[data-goto-point]");
-  if (!el) return;
-  document.getElementById("map-search").value = "";
-  document.getElementById("map-search-results").classList.add("hidden");
-  openPoint(el.dataset.gotoPoint);
+  const pointEl = e.target.closest("[data-goto-point]");
+  if (pointEl) {
+    document.getElementById("map-search").value = "";
+    document.getElementById("map-search-results").classList.add("hidden");
+    openPoint(pointEl.dataset.gotoPoint);
+    return;
+  }
+  const remoteEl = e.target.closest("[data-goto-remote]");
+  if (remoteEl) {
+    const resultsEl = document.getElementById("map-search-results");
+    const remote = JSON.parse(resultsEl.dataset.remoteResults || "[]");
+    const place = remote[Number(remoteEl.dataset.gotoRemote)];
+    if (!place) return;
+    document.getElementById("map-search").value = "";
+    resultsEl.classList.add("hidden");
+    if (mapInitialized) state.map.setView([place.lat, place.lon], 12);
+    openAdhocPoint(place.lat, place.lon, place.name);
+  }
 });
 
 function typeLabel(type) {
@@ -744,10 +815,10 @@ function typeLabel(type) {
 
 // ---------- КАРТОЧКА ТОЧКИ (в т.ч. точка, выбранная тапом по карте) ----------
 
-function makeAdhocPoint(lat, lon) {
+function makeAdhocPoint(lat, lon, name) {
   return {
     id: `adhoc_${lat.toFixed(4)}_${lon.toFixed(4)}`,
-    name: `Точка на карте (${lat.toFixed(3)}, ${lon.toFixed(3)})`,
+    name: name || `Точка на карте (${lat.toFixed(3)}, ${lon.toFixed(3)})`,
     type: null,
     town: null,
     lat,
@@ -759,8 +830,8 @@ function makeAdhocPoint(lat, lon) {
   };
 }
 
-function openAdhocPoint(lat, lon) {
-  openPoint(makeAdhocPoint(lat, lon));
+function openAdhocPoint(lat, lon, name) {
+  openPoint(makeAdhocPoint(lat, lon, name));
 }
 
 function saveAdhocPoint(point) {
