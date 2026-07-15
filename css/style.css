@@ -767,7 +767,7 @@ textarea { resize: vertical; }
 
 /* HEADER STATUS (день-статус под брендом на Главной) */
 .header-status {
-  padding: 0 16px 10px;
+  padding: 0 16px 10px 4px;
   color: rgba(255, 255, 255, 0.9);
   font-size: 13px;
   font-weight: 600;
