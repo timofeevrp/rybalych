@@ -85,6 +85,24 @@ function getPointById(id) {
   return getAllPoints().find((p) => p.id === id);
 }
 
+// Ограничивает число одновременных запросов (вместо Promise.all по всем сразу) —
+// иначе при открытии главной/карты уходит залпом 8-20+ запросов погоды разом,
+// что легко упирается в лимит бесплатного Open-Meteo под нагрузкой нескольких
+// пользователей одновременно (см. fetchWithRetry в weather.js — вторая линия
+// защиты на тот же случай).
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 function haversineKm(a, b) {
   const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
@@ -266,9 +284,7 @@ async function loadHome({ skipGeo = false } = {}) {
     .sort((a, b) => a.distanceKm - b.distanceKm)
     .slice(0, 8);
 
-  const forecasts = await Promise.all(
-    nearby.map((p) => getPointForecast(p).catch(() => null))
-  );
+  const forecasts = await mapWithConcurrency(nearby, 3, (p) => getPointForecast(p).catch(() => null));
   const withForecast = nearby
     .map((point, i) => ({ point, forecast: forecasts[i] }))
     .filter((x) => x.forecast);
@@ -692,7 +708,7 @@ async function renderMarkers() {
     points = points.filter((p) => (typeFilter === "paid" ? p.paid : p.type === typeFilter));
   }
 
-  points.forEach((point) => {
+  const markerEntries = points.map((point) => {
     const icon = L.divIcon({
       className: "marker-score",
       html: `<div class="map-pin sc-2"><span>…</span></div>`,
@@ -701,20 +717,26 @@ async function renderMarkers() {
     });
     const marker = L.marker([point.lat, point.lon], { icon }).addTo(state.markersLayer);
     marker.on("click", () => showPlaceSheet(point));
+    return { point, marker };
+  });
 
-    getPointForecast(point)
-      .then(({ result }) => {
-        const interp = scoreInterpretation(result.score);
-        marker.setIcon(
-          L.divIcon({
-            className: "marker-score",
-            html: `<div class="map-pin sc-${interp.tier}"><span>${result.score}</span></div>`,
-            iconSize: [30, 30],
-            iconAnchor: [15, 30],
-          })
-        );
-      })
-      .catch(() => {});
+  // Запросы погоды на все маркеры разом (их может быть 20+) — ограничиваем
+  // параллелизм, см. mapWithConcurrency.
+  await mapWithConcurrency(markerEntries, 3, async ({ point, marker }) => {
+    try {
+      const { result } = await getPointForecast(point);
+      const interp = scoreInterpretation(result.score);
+      marker.setIcon(
+        L.divIcon({
+          className: "marker-score",
+          html: `<div class="map-pin sc-${interp.tier}"><span>${result.score}</span></div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 30],
+        })
+      );
+    } catch {
+      // маркер остаётся с placeholder-иконкой — не критично
+    }
   });
 }
 
@@ -1568,8 +1590,7 @@ async function renderFavorites() {
 
   const points = favIds.map(getPointById).filter(Boolean);
   const loc = state.userLocation || DEFAULT_CENTER;
-  const entries = await Promise.all(
-    points.map(async (point) => {
+  const entries = await mapWithConcurrency(points, 3, async (point) => {
       const forecast = await getPointForecast(point).catch(() => null);
       if (!forecast) return { point, forecast: null };
       const dayWindows = computeDayWindows(forecast.weather, point.lat, point.lon, Storage.getReports(point.id));
@@ -1584,8 +1605,7 @@ async function renderFavorites() {
         best: dayWindows.best,
         lastReport,
       };
-    })
-  );
+    });
   favDataCache = entries.filter((e) => e.forecast);
   renderFavoritesList(container);
 }
@@ -1839,7 +1859,7 @@ async function openRegionDetail(regionName) {
   container.innerHTML = `<div class="state-block"><div class="spinner"></div></div>`;
 
   const points = getAllPoints().filter((p) => p.region === regionName);
-  const forecasts = await Promise.all(points.map((p) => getPointForecast(p).catch(() => null)));
+  const forecasts = await mapWithConcurrency(points, 3, (p) => getPointForecast(p).catch(() => null));
   const pointIds = new Set(points.map((p) => p.id));
   const reports = Storage.getReports()
     .filter((r) => pointIds.has(r.pointId))

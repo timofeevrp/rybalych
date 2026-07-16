@@ -2,6 +2,21 @@
 
 const BASE_URL = "https://api.open-meteo.com/v1/forecast";
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Бесплатный Open-Meteo иногда отвечает 429 (слишком много запросов) под
+// всплеском нагрузки — например, когда несколько человек одновременно
+// открывают приложение с одного интернета (общий IP). Это почти всегда
+// кратковременно, поэтому пробуем ещё раз с паузой вместо немедленного отказа.
+async function fetchWithRetry(url, attempts = 3) {
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(url);
+    if (res.status !== 429) return res;
+    if (i < attempts - 1) await sleep(600 * (i + 1));
+  }
+  return fetch(url);
+}
+
 export async function fetchWeather(lat, lon) {
   const params = new URLSearchParams({
     latitude: lat,
@@ -13,7 +28,7 @@ export async function fetchWeather(lat, lon) {
     timezone: "auto",
   });
 
-  const res = await fetch(`${BASE_URL}?${params.toString()}`);
+  const res = await fetchWithRetry(`${BASE_URL}?${params.toString()}`);
   if (!res.ok) throw new Error(`Weather API error: ${res.status}`);
   const json = await res.json();
 
