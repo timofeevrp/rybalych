@@ -85,6 +85,16 @@ function getPointById(id) {
   return getAllPoints().find((p) => p.id === id);
 }
 
+// Когда геолокация недоступна (отказ или просто не работает в WebView) —
+// раньше молча показывали Москву любому пользователю из любого региона.
+// Если в профиле уже указана область, честнее подставить точку из неё,
+// чем дефолтный центр за тысячи километров от реального места рыбака.
+function findRegionFallbackCenter(region) {
+  if (!region) return null;
+  const match = getAllPoints().find((p) => p.region === region);
+  return match ? { lat: match.lat, lon: match.lon } : null;
+}
+
 // Ограничивает число одновременных запросов (вместо Promise.all по всем сразу) —
 // иначе при открытии главной/карты уходит залпом 8-20+ запросов погоды разом,
 // что легко упирается в лимит бесплатного Open-Meteo под нагрузкой нескольких
@@ -176,7 +186,14 @@ function showView(viewId, { pushHistory = true } = {}) {
   document.querySelectorAll(".tab-btn").forEach((b) => {
     b.classList.toggle("active", b.dataset.view === viewId);
   });
-  if (pushHistory) state.viewStack.push(viewId);
+  if (pushHistory) {
+    state.viewStack.push(viewId);
+    // Синхронизируем свой стек экранов с History API. Без этого у браузера
+    // (и у WebView внутри MAX) нет истории для аппаратной/жестовой кнопки
+    // "назад" — она не находит, куда вернуться внутри приложения, и просто
+    // закрывает всю мини-апку целиком вместо перехода на предыдущий экран.
+    history.pushState({ appView: viewId }, "", location.href);
+  }
 
   if (viewId === "map") initMapIfNeeded();
   if (viewId === "favorites") renderFavorites();
@@ -184,11 +201,19 @@ function showView(viewId, { pushHistory = true } = {}) {
   if (viewId === "home" && homeLoadFailed) loadHome();
 }
 
+// "← Назад" в интерфейсе идёт тем же путём, что и системная кнопка "назад"
+// (через history.back() -> popstate) — единая точка правды, чтобы стек
+// экранов и история браузера никогда не рассинхронизировались.
 function goBack() {
+  if (state.viewStack.length > 1) history.back();
+}
+
+window.addEventListener("popstate", () => {
+  if (state.viewStack.length <= 1) return; // на корневом экране — пусть закрывает мини-апп, это ожидаемо
   state.viewStack.pop();
   const prev = state.viewStack[state.viewStack.length - 1] || "home";
   showView(prev, { pushHistory: false });
-}
+});
 
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -279,8 +304,16 @@ async function loadHome({ skipGeo = false } = {}) {
   try {
 
   const loc = skipGeo ? null : await getLocation();
-  state.userLocation = loc || DEFAULT_CENTER;
+  const profile = Storage.getProfile();
+  // Геолокация браузера может быть недоступна не только из-за отказа
+  // пользователя, но и из-за самого WebView (например, у MAX Bridge вообще
+  // нет метода для координат — только обычный navigator.geolocation, и он
+  // может не работать внутри мини-апки). Раньше в этом случае молча
+  // показывали Москву — теперь сначала пробуем регион из профиля.
+  const regionFallback = !loc ? findRegionFallbackCenter(profile.region) : null;
+  state.userLocation = loc || regionFallback || DEFAULT_CENTER;
   state.geoDenied = !loc;
+  state.usingRegionFallback = !loc && !!regionFallback;
   if (!skipGeo) Storage.trackEvent(loc ? "geo_granted" : "geo_denied");
 
   const nearby = getAllPoints()
@@ -319,13 +352,19 @@ async function loadHome({ skipGeo = false } = {}) {
         <div class="ln-row">
           <span class="ln-icon">🧭</span>
           <div>
-            <div class="ln-title">Показываю клёв рядом с Москвой</div>
-            <div class="ln-text">Включите геолокацию — покажу места рядом с вами. Или выберите точку на карте вручную.</div>
+            <div class="ln-title">${state.usingRegionFallback ? `Показываю клёв в вашем регионе (${escapeHtml(profile.region)})` : "Показываю клёв рядом с Москвой"}</div>
+            <div class="ln-text">${state.usingRegionFallback
+              ? "Геолокация недоступна — показываю по региону из профиля. Включите геолокацию для мест точно рядом с вами."
+              : profile.region
+                ? "Геолокация недоступна, а точки в вашем регионе профиля не нашлось. Выберите место на карте вручную."
+                : "Геолокация недоступна. Укажите регион в профиле — так будем показывать места рядом с вами, а не Москву."}</div>
           </div>
         </div>
         <div class="ln-actions">
           <button class="btn-secondary" id="btn-geo-allow">Разрешить доступ</button>
-          <button class="btn-secondary" id="btn-geo-map">Выбрать на карте</button>
+          ${!state.usingRegionFallback && !profile.region
+            ? `<button class="btn-secondary" id="btn-geo-profile">Указать регион</button>`
+            : `<button class="btn-secondary" id="btn-geo-map">Выбрать на карте</button>`}
         </div>
       </div>`
     : "";
@@ -345,7 +384,6 @@ async function loadHome({ skipGeo = false } = {}) {
     }));
 
   const recentReports = Storage.getReports().slice(0, 3);
-  const profile = Storage.getProfile();
   const profileStats = getProfileStats();
   const { current: level, next: nextLevel, progress: levelProgress } = getLevelInfo(profileStats.reportsCount);
 
@@ -460,6 +498,11 @@ async function loadHome({ skipGeo = false } = {}) {
   if (geoAllowBtn) geoAllowBtn.addEventListener("click", () => loadHome());
   const geoMapBtn = document.getElementById("btn-geo-map");
   if (geoMapBtn) geoMapBtn.addEventListener("click", () => showView("map"));
+  const geoProfileBtn = document.getElementById("btn-geo-profile");
+  if (geoProfileBtn) geoProfileBtn.addEventListener("click", () => {
+    state.viewStack = ["profile"];
+    showView("profile", { pushHistory: false });
+  });
 
   } catch (err) {
     // Раньше при сбое сети экран навсегда оставался с крутилкой — теперь
@@ -1013,7 +1056,7 @@ async function openPoint(pointOrId) {
       <div class="card-row" style="gap:8px;margin-bottom:14px;">
         <button class="btn-secondary" id="btn-fav" style="flex:1;">${isAdhoc ? "💾 Сохранить точку" : isFav ? "★ В избранном" : "☆ Сохранить"}</button>
         <button class="btn-secondary" id="btn-route" style="flex:1;">🧭 Маршрут</button>
-        <button class="btn-secondary" id="btn-report" style="flex:1;">📋 Подробно</button>
+        <button class="btn-secondary" id="btn-report" style="flex:1;">📝 Отчёт</button>
       </div>
 
       ${point.rules ? `<div class="card"><div class="card-title">Правила / ограничения</div><div class="card-sub">${point.rules}</div></div>` : ""}
@@ -1032,6 +1075,8 @@ async function openPoint(pointOrId) {
     updateBiteChartSlot();
     loadGeomagneticLine();
     bindReportAuthorLinks(container);
+    const emptyReportBtn = container.querySelector("[data-open-report]");
+    if (emptyReportBtn) emptyReportBtn.addEventListener("click", () => openReportForm(point.id));
 
     if (!point.town) {
       reverseGeocode(point.lat, point.lon)
@@ -1396,7 +1441,11 @@ function renderSpeciesGrid(pool, dayWindows, waterTemp) {
 
 function renderReportsList(reports, point) {
   if (!reports.length) {
-    return `<div class="empty-state"><div class="icon">📝</div>Отчётов здесь пока нет. Оставьте первый — это минута, зато другим рыбакам будет полезно.</div>`;
+    return `<div class="empty-state">
+      <div class="icon">📝</div>
+      Отчётов здесь пока нет. Оставьте первый — это минута, зато другим рыбакам будет полезно.
+      ${point ? `<button type="button" class="btn-primary" style="margin-top:12px;" data-open-report="${point.id}">Оставить отчёт</button>` : ""}
+    </div>`;
   }
   return reports
     .map((raw) => {

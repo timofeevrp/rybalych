@@ -212,7 +212,8 @@ main#views {
   border-radius: 20px;
   padding: 4px 10px;
   font-size: 12px;
-  color: var(--green-700);
+  color: var(--green-400);
+  font-weight: 600;
 }
 
 .best-window-line {
