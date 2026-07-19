@@ -310,6 +310,34 @@ function getGreeting() {
   return "Добрый вечер";
 }
 
+function renderLocationChooser(contentEl) {
+  Storage.trackEvent("location_chooser_shown");
+  contentEl.innerHTML = `
+    <div class="card" style="text-align:center;padding:32px 22px;">
+      <div style="font-size:34px;margin-bottom:10px;">📍</div>
+      <div class="card-title" style="font-size:18px;margin-bottom:6px;">Где вы рыбачите?</div>
+      <div class="card-sub" style="margin-bottom:20px;">Точный прогноз считается для конкретного места — без этого мы не угадаем регион и покажем что попало.</div>
+      <button class="btn-primary btn-full" id="lc-geo" style="margin-bottom:10px;">📡 Разрешить геолокацию</button>
+      <button class="btn-secondary btn-full" id="lc-map" style="margin-bottom:10px;">🗺️ Найти на карте</button>
+      <button class="btn-secondary btn-full" id="lc-region" style="margin-bottom:16px;">✏️ Указать регион</button>
+      <button class="details-toggle" id="lc-skip" style="margin:0;padding:0;">Показать пример по Москве</button>
+    </div>
+  `;
+  document.getElementById("lc-geo").addEventListener("click", () => renderForecast());
+  document.getElementById("lc-map").addEventListener("click", () => {
+    Storage.updateProfile({ locationChooserDismissed: true });
+    showView("map");
+  });
+  document.getElementById("lc-region").addEventListener("click", () => {
+    Storage.updateProfile({ locationChooserDismissed: true });
+    showView("profile");
+  });
+  document.getElementById("lc-skip").addEventListener("click", () => {
+    Storage.updateProfile({ locationChooserDismissed: true });
+    renderForecast({ skipGeo: true });
+  });
+}
+
 // Прогноз клёва живёт на отдельном экране (не на главной) — открывается
 // заново при каждом тапе на хаб-карточку "Прогноз клёва", поэтому данные
 // всегда свежие и отдельный флаг "устарело" (как раньше state.homeStale)
@@ -340,6 +368,20 @@ async function renderForecast({ skipGeo = false } = {}) {
   // может не работать внутри мини-апки). Раньше в этом случае молча
   // показывали Москву — теперь сначала пробуем регион из профиля.
   const regionFallback = !loc ? findRegionFallbackCenter(profile.region) : null;
+
+  // Место действительно не известно (ни геолокации, ни региона) — вместо
+  // того чтобы молча подставить Москву и только потом внизу экрана
+  // объяснять, что это не ваш регион, сразу явно спрашиваем. Показываем
+  // один раз: как только место разрешилось (или человек сам выбрал
+  // "показать пример по Москве"), больше не переспрашиваем.
+  if (!loc && !regionFallback && !profile.locationChooserDismissed) {
+    loadingEl.classList.add("hidden");
+    contentEl.classList.remove("hidden");
+    renderLocationChooser(contentEl);
+    return;
+  }
+  if (loc || regionFallback) Storage.updateProfile({ locationChooserDismissed: true });
+
   state.userLocation = loc || regionFallback || DEFAULT_CENTER;
   state.geoDenied = !loc;
   state.usingRegionFallback = !loc && !!regionFallback;

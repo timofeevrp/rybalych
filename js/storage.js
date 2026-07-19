@@ -101,6 +101,7 @@ export const Storage = {
       favoriteFishingTypes: [],
       favoriteWaters: [],
       publicProfileEnabled: false,
+      locationChooserDismissed: false,
       privacy: {
         showAvatar: true,
         showRegion: false,
