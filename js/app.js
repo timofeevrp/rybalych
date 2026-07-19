@@ -373,25 +373,11 @@ async function loadHome({ skipGeo = false } = {}) {
       </div>`
     : "";
 
-  const bestPoints = withForecast
-    .slice()
-    .sort((a, b) => b.forecast.result.score - a.forecast.result.score)
-    .slice(0, 3)
-    .map((entry) => ({
-      ...entry,
-      windows: computeDayWindows(
-        entry.forecast.weather,
-        entry.point.lat,
-        entry.point.lon,
-        Storage.getReports(entry.point.id)
-      ),
-    }));
-
   // Избранные места должны реально влиять на главную, а не требовать
   // отдельного похода на вкладку "Избранное" — тянем их прогноз отдельно
   // от "ближайших 8", т.к. любимое место может быть не в этом радиусе.
-  const favIds = Storage.getFavorites();
-  const favPoints = favIds.map((id) => getPointById(id)).filter(Boolean);
+  const favIdSet = new Set(Storage.getFavorites());
+  const favPoints = [...favIdSet].map((id) => getPointById(id)).filter(Boolean);
   const favForecastsRaw = await mapWithConcurrency(favPoints, 3, (p) => getPointForecast(p).catch(() => null));
   const favEntries = favPoints
     .map((point, i) => ({ point, forecast: favForecastsRaw[i], distanceKm: haversineKm(state.userLocation, point) }))
@@ -399,17 +385,29 @@ async function loadHome({ skipGeo = false } = {}) {
     .map((entry) => ({
       ...entry,
       windows: computeDayWindows(entry.forecast.weather, entry.point.lat, entry.point.lon, Storage.getReports(entry.point.id)),
+      isFavorite: true,
     }));
+
+  // Один список "куда поехать" вместо двух пересекающихся (избранное отдельно
+  // и общий топ отдельно) — избранные места идут первыми, без дублей.
+  const bestPoints = [
+    ...favEntries,
+    ...withForecast
+      .filter((x) => !favIdSet.has(x.point.id))
+      .slice()
+      .sort((a, b) => b.forecast.result.score - a.forecast.result.score)
+      .slice(0, 3)
+      .map((entry) => ({
+        ...entry,
+        windows: computeDayWindows(entry.forecast.weather, entry.point.lat, entry.point.lon, Storage.getReports(entry.point.id)),
+      })),
+  ];
 
   const locationContext = state.geoDenied
     ? state.usingRegionFallback
       ? { icon: "📍", text: `${profile.region} (по профилю)` }
       : { icon: "📍", text: "Москва (по умолчанию)" }
     : { icon: "📍", text: "Рядом с вами (геолокация)" };
-
-  const recentReports = Storage.getReports().slice(0, 3);
-  const profileStats = getProfileStats();
-  const { current: level, next: nextLevel, progress: levelProgress } = getLevelInfo(profileStats.reportsCount);
 
   const html = `
     <div class="hub-grid">
@@ -452,32 +450,12 @@ async function loadHome({ skipGeo = false } = {}) {
       </div>
       <div class="card-cta-row">
         <button class="btn-primary" id="hero-route-btn">Маршрут</button>
-        <button class="btn-secondary" id="hero-details-btn">Подробный прогноз</button>
+        <button class="btn-secondary" id="hero-details-btn">Подробнее</button>
+        <button class="btn-secondary" id="hero-gear-btn">Что взять</button>
       </div>
     </div>
-
-    <div class="quick-actions">
-      <div class="quick-action" data-action="report"><span class="qa-icon">📝</span>Оставить отчёт</div>
-      <div class="quick-action" data-action="gear"><span class="qa-icon">🎒</span>Что взять</div>
-    </div>
-
-    ${favEntries.length ? `
-    <div class="section-header"><span class="icon">⭐</span><h3>Избранное</h3></div>
-    <div class="card">
-      ${favEntries.map((entry) => renderPlaceRecommendationCard(entry)).join("")}
-    </div>` : ""}
 
     ${geoNotice}
-
-    <div class="mini-profile-card" id="mini-profile-card">
-      <span class="level-icon">${level.icon}</span>
-      <div style="flex:1;">
-        <div class="mp-name">${profile.name || "Рыбак"}</div>
-        <div class="mp-level">${level.name}${nextLevel ? ` · до «${nextLevel.name}»: ${profileStats.reportsCount}/${nextLevel.threshold}` : " · максимальный уровень"}</div>
-        ${nextLevel ? `<div class="level-bar"><div class="level-bar-fill" style="width:${levelProgress}%;"></div></div>` : ""}
-      </div>
-      <span class="mp-arrow">›</span>
-    </div>
 
     ${warnings.length ? `
     <div class="section-header"><span class="icon">⚠️</span><h3>Стоит учесть</h3></div>
@@ -494,11 +472,6 @@ async function loadHome({ skipGeo = false } = {}) {
   contentEl.innerHTML = html;
   bindOpenPointButtons(contentEl);
 
-  document.getElementById("mini-profile-card").addEventListener("click", () => {
-    state.viewStack = ["profile"];
-    showView("profile", { pushHistory: false });
-  });
-
   contentEl.querySelector('[data-hub="forecast"]').addEventListener("click", () => {
     Storage.trackEvent("hub_click", { hub: "forecast" });
     document.getElementById("home-forecast-anchor").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -507,12 +480,6 @@ async function loadHome({ skipGeo = false } = {}) {
     Storage.trackEvent("hub_click", { hub: "reports" });
     openRegions();
   });
-
-  contentEl.querySelector('[data-action="report"]').addEventListener("click", () => {
-    state.viewStack = ["point", "report"];
-    openReportForm(hero.point.id);
-  });
-  contentEl.querySelector('[data-action="gear"]').addEventListener("click", () => openGearScreen(hero.point, heroWeather));
 
   document.getElementById("home-quick-yes").addEventListener("click", () => {
     submitQuickReport(hero.point, false, true, () => loadHome());
@@ -525,6 +492,7 @@ async function loadHome({ skipGeo = false } = {}) {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${hero.point.lat},${hero.point.lon}`, "_blank");
   });
   document.getElementById("hero-details-btn").addEventListener("click", () => openPoint(hero.point.id));
+  document.getElementById("hero-gear-btn").addEventListener("click", () => openGearScreen(hero.point, heroWeather));
 
   document.getElementById("location-context").addEventListener("click", () => {
     state.viewStack = ["profile"];
@@ -555,14 +523,14 @@ async function loadHome({ skipGeo = false } = {}) {
 // Более подробная карточка места для "Куда поехать сегодня" на главной —
 // отдельная от компактного renderPointListItem, который используют
 // избранное/регионы/поиск (там 3 доп. вычисления на точку не нужны).
-function renderPlaceRecommendationCard({ point, forecast, distanceKm, windows }) {
+function renderPlaceRecommendationCard({ point, forecast, distanceKm, windows, isFavorite }) {
   const interp = scoreInterpretation(forecast.result.score);
   const reason = forecast.result.topFactors[0] || "";
   return `
     <div class="place-card" data-open-point="${point.id}">
       <div class="point-mini-score sc-${interp.tier}">${forecast.result.score}</div>
       <div style="flex:1;">
-        <div class="card-title">${point.name}</div>
+        <div class="card-title">${isFavorite ? "⭐ " : ""}${point.name}</div>
         <div class="card-sub" style="margin-bottom:6px;">${point.town || ""}${distanceKm != null ? " · " + distanceKm.toFixed(1) + " км" : ""}</div>
         <div class="place-meta">
           <span class="place-meta-chip">${windows.best.icon} Лучше ${windows.best.label.toLowerCase()}</span>
