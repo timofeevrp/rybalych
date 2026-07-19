@@ -163,8 +163,26 @@ main#views {
 .hub-card-stack .hub-banner-img { width: 64px; height: 64px; align-self: flex-start; }
 .hub-card-stack .hub-label { font-size: 17px; }
 .hub-card-stack .hub-sub { font-size: 13px; }
-.hub-actions { display: flex; gap: 8px; margin-top: 6px; }
-.hub-actions button { flex: 1; margin: 0; }
+/* CHOICE SCREEN (после тапа на карточку с главной — понятный выбор пути) */
+.choice-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: linear-gradient(180deg, var(--surface-raised) 0%, var(--surface) 65%);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.choice-option:active { background: var(--surface-raised); }
+.choice-option-icon { font-size: 28px; flex-shrink: 0; }
+.choice-option-label { display: block; font-weight: 700; font-size: 15px; }
+.choice-option-sub { display: block; color: var(--gray-500); font-size: 13px; margin-top: 2px; }
 
 /* STATE BLOCKS */
 .state-block {

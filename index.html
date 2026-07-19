@@ -42,39 +42,37 @@
 
     <main id="views">
 
-      <!-- HOME VIEW (только точка входа — 2 карточки, без сети) -->
+      <!-- HOME VIEW (только точка входа — 2 карточки, без сети, каждая один тап) -->
       <section id="view-home" class="view active">
         <div class="hub-grid hub-grid-main">
-          <div class="hub-card hub-card-banner hub-card-stack">
+          <div class="hub-card hub-card-banner hub-card-stack" id="card-forecast">
             <img class="hub-banner-img" src="assets/hub-forecast.png" alt="Прогноз" />
             <div class="hub-label">Проверить прогноз клёва</div>
             <div class="hub-sub">Выберите водоём сами или найдите места рядом с вами</div>
-            <div class="hub-actions">
-              <button class="btn-secondary" id="btn-pick-place">Выбрать место</button>
-              <button class="btn-primary" id="btn-nearby">Показать рядом</button>
-            </div>
           </div>
-          <div class="hub-card hub-card-banner hub-card-stack">
+          <div class="hub-card hub-card-banner hub-card-stack" id="card-reports">
             <img class="hub-banner-img" src="assets/hub-reports.png" alt="Отчёты" />
             <div class="hub-label">Отчёты рыбаков</div>
             <div class="hub-sub">Что ловят рядом и где сейчас клюёт</div>
-            <div class="hub-actions">
-              <button class="btn-secondary" id="btn-view-reports">Смотреть отчёты</button>
-              <button class="btn-primary" id="btn-add-report">Оставить отчёт</button>
-            </div>
           </div>
         </div>
       </section>
 
+      <!-- CHOICE VIEW (общий экран выбора пути — после тапа на карточку с главной) -->
+      <section id="view-choice" class="view">
+        <button class="back-btn" data-back="home">← Назад</button>
+        <div id="choice-content"></div>
+      </section>
+
       <!-- PLACE PICKER VIEW ("Выбрать место" / "Куда добавить отчёт") -->
       <section id="view-place-picker" class="view">
-        <button class="back-btn" data-back="home">← Назад</button>
+        <button class="back-btn" data-back="choice">← Назад</button>
         <div id="place-picker-content"></div>
       </section>
 
       <!-- FORECAST VIEW ("Показать рядом" — геолокация/регион) -->
       <section id="view-forecast" class="view">
-        <button class="back-btn" data-back="home">← Назад</button>
+        <button class="back-btn" data-back="choice">← Назад</button>
         <div id="forecast-loading" class="state-block">
           <div class="spinner"></div>
           <p>Определяем ваше местоположение и считаем прогноз...</p>

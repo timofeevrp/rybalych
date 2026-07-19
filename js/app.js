@@ -237,25 +237,18 @@ document.querySelectorAll("[data-back]").forEach((btn) => {
   btn.addEventListener("click", goBack);
 });
 
-// Главная теперь статична (2 карточки, без сети) — кнопки вешаем один
-// раз при загрузке модуля, а не при каждом перерендере, как было раньше.
-// Внутри "Прогноз клёва" два явных пути — свой выбор места или ближайшие
-// по геолокации — вместо одного смешанного экрана.
-document.getElementById("btn-pick-place").addEventListener("click", () => {
-  Storage.trackEvent("hub_click", { hub: "pick-place" });
-  openPlacePicker("forecast");
+// Главная теперь статична (2 карточки, без сети, каждая — один тап) —
+// клики вешаем один раз при загрузке модуля. Каждая карточка ведёт на
+// общий экран выбора (openForecastChoice/openReportsChoice), а не сама
+// содержит кнопки — иначе выбор путей смешивается с главной и выглядит
+// как разброд вместо понятного шага за шагом пути.
+document.getElementById("card-forecast").addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "forecast" });
+  openForecastChoice();
 });
-document.getElementById("btn-nearby").addEventListener("click", () => {
-  Storage.trackEvent("hub_click", { hub: "nearby" });
-  openForecastScreen();
-});
-document.getElementById("btn-view-reports").addEventListener("click", () => {
-  Storage.trackEvent("hub_click", { hub: "view-reports" });
-  openRegions();
-});
-document.getElementById("btn-add-report").addEventListener("click", () => {
-  Storage.trackEvent("hub_click", { hub: "add-report" });
-  openPlacePicker("report");
+document.getElementById("card-reports").addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "reports" });
+  openReportsChoice();
 });
 
 // Нижнего меню больше нет — профиль/настройки открываются маленькой
@@ -363,6 +356,61 @@ function renderLocationChooser(contentEl) {
   document.getElementById("lc-skip").addEventListener("click", () => {
     Storage.updateProfile({ locationChooserDismissed: true });
     renderForecast({ skipGeo: true });
+  });
+}
+
+// ---------- ЭКРАН ВЫБОРА ПУТИ (после тапа по карточке с главной) ----------
+// Один общий рендер для обеих карточек: тап на карточку -> один явный
+// экран с 2 крупными вариантами -> выбор -> сам сценарий. Раньше кнопки
+// выбора висели прямо на карточке главной вперемешку с заголовком —
+// путь клиента ощущался расплывчато. Теперь каждый шаг — отдельный
+// понятный экран.
+
+function renderChoiceScreen({ title, subtitle, options }) {
+  const container = document.getElementById("choice-content");
+  container.innerHTML = `
+    <h2>${title}</h2>
+    <div class="card-sub" style="margin-bottom:18px;">${subtitle}</div>
+    ${options
+      .map(
+        (o, i) => `
+      <button class="choice-option" id="choice-opt-${i}">
+        <span class="choice-option-icon">${o.icon}</span>
+        <span>
+          <span class="choice-option-label">${o.label}</span>
+          <span class="choice-option-sub">${o.sub}</span>
+        </span>
+        <span class="place-arrow">›</span>
+      </button>`
+      )
+      .join("")}
+  `;
+  options.forEach((o, i) => {
+    document.getElementById(`choice-opt-${i}`).addEventListener("click", o.onClick);
+  });
+}
+
+function openForecastChoice() {
+  showView("choice");
+  renderChoiceScreen({
+    title: "Прогноз клёва",
+    subtitle: "Как хотите искать место?",
+    options: [
+      { icon: "📍", label: "Показать рядом", sub: "Ближайшие места по геолокации или региону", onClick: () => openForecastScreen() },
+      { icon: "🔍", label: "Выбрать самому", sub: "Поиск по названию, список или карта", onClick: () => openPlacePicker("forecast") },
+    ],
+  });
+}
+
+function openReportsChoice() {
+  showView("choice");
+  renderChoiceScreen({
+    title: "Отчёты рыбаков",
+    subtitle: "Что хотите сделать?",
+    options: [
+      { icon: "📰", label: "Смотреть отчёты", sub: "Что ловят рядом, по регионам", onClick: () => openRegions() },
+      { icon: "📝", label: "Оставить отчёт", sub: "Расскажите, как порыбачили", onClick: () => openPlacePicker("report") },
+    ],
   });
 }
 
