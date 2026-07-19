@@ -976,10 +976,9 @@ async function openPoint(pointOrId) {
           🌙 ${astroNow.lunarDay}-й лунный день · восход луны ${formatTime(astroNow.moonrise)} · заход ${formatTime(astroNow.moonset)} · календарь на месяц ›
         </div>
         <div style="margin-top:2px;color:var(--gray-500);font-size:12px;" id="geomagnetic-line" title="Информационно: научная связь геомагнитной активности с клёвом не подтверждена.">🧲 Проверяем геомагнитную обстановку…</div>
-      </div>
 
-      <div class="section-header"><span class="icon">⏰</span><h3>Лучшие часы сегодня</h3></div>
-      <div class="card">
+        <div class="card-divider"></div>
+        <div class="card-title" style="font-size:13px;">⏰ Лучшие часы сегодня</div>
         <div class="window-row">
           ${dayWindows.windows
             .map(
@@ -997,13 +996,11 @@ async function openPoint(pointOrId) {
       <div class="section-header"><span class="icon">📊</span><h3>Клёв по часам</h3></div>
       <div class="card" id="bite-chart-slot"></div>
 
-      <div class="section-header"><span class="icon">🌦️</span><h3>Погода по часам</h3></div>
+      <div class="section-header"><span class="icon">🌦️</span><h3>Погода и давление</h3></div>
       <div class="card">
         ${renderHourlyStrip(weather)}
-      </div>
-
-      <div class="section-header"><span class="icon">📉</span><h3>Давление за 48 часов</h3></div>
-      <div class="card">
+        <div class="card-divider"></div>
+        <div class="card-title" style="font-size:13px;">Давление за 48 часов</div>
         ${renderPressureSparkline(weather)}
       </div>
 
