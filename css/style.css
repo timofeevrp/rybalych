@@ -138,14 +138,33 @@ main#views {
 #view-map { padding: 0; display: none; }
 #view-map.active { display: flex; flex-direction: column; height: calc(100vh - 80px - env(safe-area-inset-bottom)); position: relative; margin-bottom: -24px; }
 
-/* Главная теперь всего 2 карточки — без центрирования на высоких экранах
-   (десктоп, крупные телефоны) они прибиты к верху, а под ними голая пустота. */
+/* Главная — 2 карточки одна под другой, ближе к верху (не по центру
+   пустого экрана — это оставляло такую же пустоту снизу, просто сдвигало
+   её). min-height был рассчитан ещё под нижнее меню (142px) — то же
+   несоответствие, что чинили для карты, здесь просто забыли поправить. */
 #view-home.active {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  min-height: calc(100vh - 142px - env(safe-area-inset-bottom));
+  padding-top: 8px;
+  min-height: calc(100vh - 80px - env(safe-area-inset-bottom));
 }
+.hub-grid.hub-grid-main {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+.hub-card.hub-card-stack {
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  padding: 16px;
+  gap: 10px;
+  cursor: default;
+}
+.hub-card-stack .hub-banner-img { width: 64px; height: 64px; align-self: flex-start; }
+.hub-card-stack .hub-label { font-size: 17px; }
+.hub-card-stack .hub-sub { font-size: 13px; }
+.hub-actions { display: flex; gap: 8px; margin-top: 6px; }
+.hub-actions button { flex: 1; margin: 0; }
 
 /* STATE BLOCKS */
 .state-block {
@@ -334,6 +353,12 @@ h3 { font-size: 15px; margin: 12px 0 6px; }
   color: var(--text-on-yellow);
 }
 .btn-primary:active { background: var(--yellow-600); transform: scale(0.97); }
+.btn-primary:disabled, .btn-secondary:disabled {
+  background: var(--gray-200);
+  color: var(--gray-500);
+  cursor: not-allowed;
+}
+.btn-primary:disabled:active, .btn-secondary:disabled:active { transform: none; }
 .btn-secondary {
   background: var(--green-100);
   color: var(--green-400);

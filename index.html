@@ -45,20 +45,34 @@
       <!-- HOME VIEW (только точка входа — 2 карточки, без сети) -->
       <section id="view-home" class="view active">
         <div class="hub-grid hub-grid-main">
-          <div class="hub-card hub-card-banner" data-hub="forecast">
+          <div class="hub-card hub-card-banner hub-card-stack">
             <img class="hub-banner-img" src="assets/hub-forecast.png" alt="Прогноз" />
-            <div class="hub-label">Прогноз клёва</div>
-            <div class="hub-sub">Шансы, часы и причины — прямо сейчас</div>
+            <div class="hub-label">Проверить прогноз клёва</div>
+            <div class="hub-sub">Выберите водоём сами или найдите места рядом с вами</div>
+            <div class="hub-actions">
+              <button class="btn-secondary" id="btn-pick-place">Выбрать место</button>
+              <button class="btn-primary" id="btn-nearby">Показать рядом</button>
+            </div>
           </div>
-          <div class="hub-card hub-card-banner" data-hub="reports">
+          <div class="hub-card hub-card-banner hub-card-stack">
             <img class="hub-banner-img" src="assets/hub-reports.png" alt="Отчёты" />
             <div class="hub-label">Отчёты рыбаков</div>
-            <div class="hub-sub">Кто и что поймал рядом с вами</div>
+            <div class="hub-sub">Что ловят рядом и где сейчас клюёт</div>
+            <div class="hub-actions">
+              <button class="btn-secondary" id="btn-view-reports">Смотреть отчёты</button>
+              <button class="btn-primary" id="btn-add-report">Оставить отчёт</button>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- FORECAST VIEW (прогноз клёва — открывается с главной по тапу) -->
+      <!-- PLACE PICKER VIEW ("Выбрать место" / "Куда добавить отчёт") -->
+      <section id="view-place-picker" class="view">
+        <button class="back-btn" data-back="home">← Назад</button>
+        <div id="place-picker-content"></div>
+      </section>
+
+      <!-- FORECAST VIEW ("Показать рядом" — геолокация/регион) -->
       <section id="view-forecast" class="view">
         <button class="back-btn" data-back="home">← Назад</button>
         <div id="forecast-loading" class="state-block">
@@ -168,7 +182,7 @@
             </div>
           </div>
 
-          <button type="submit" class="btn-primary btn-full" style="margin-top:16px;">Опубликовать отчёт</button>
+          <button type="submit" class="btn-primary btn-full" style="margin-top:16px;" disabled>Опубликовать отчёт</button>
         </form>
       </section>
 

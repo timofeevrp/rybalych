@@ -208,6 +208,24 @@ function goBack() {
   if (state.viewStack.length > 1) history.back();
 }
 
+// history.back() асинхронна — popstate срабатывает только на следующем
+// тике. Любой код, которому нужно что-то сделать ПОСЛЕ фактического
+// возврата (например, освежить контент экрана, на который вернулись),
+// обязан ждать реальный popstate, а не просто вызывать код следом
+// синхронно — иначе получается гонка: синхронный код отрабатывает
+// первым, а потом обработчик popstate ниже перерисовывает поверх него.
+function goBackAndThen(callback) {
+  if (state.viewStack.length <= 1) {
+    callback();
+    return;
+  }
+  window.addEventListener("popstate", function handler() {
+    window.removeEventListener("popstate", handler);
+    callback();
+  }, { once: true });
+  history.back();
+}
+
 window.addEventListener("popstate", () => {
   if (state.viewStack.length <= 1) return; // на корневом экране — пусть закрывает мини-апп, это ожидаемо
   state.viewStack.pop();
@@ -219,15 +237,25 @@ document.querySelectorAll("[data-back]").forEach((btn) => {
   btn.addEventListener("click", goBack);
 });
 
-// Главная теперь статична (2 карточки, без сети) — хаб-клики вешаем один
+// Главная теперь статична (2 карточки, без сети) — кнопки вешаем один
 // раз при загрузке модуля, а не при каждом перерендере, как было раньше.
-document.querySelector('[data-hub="forecast"]').addEventListener("click", () => {
-  Storage.trackEvent("hub_click", { hub: "forecast" });
+// Внутри "Прогноз клёва" два явных пути — свой выбор места или ближайшие
+// по геолокации — вместо одного смешанного экрана.
+document.getElementById("btn-pick-place").addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "pick-place" });
+  openPlacePicker("forecast");
+});
+document.getElementById("btn-nearby").addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "nearby" });
   openForecastScreen();
 });
-document.querySelector('[data-hub="reports"]').addEventListener("click", () => {
-  Storage.trackEvent("hub_click", { hub: "reports" });
+document.getElementById("btn-view-reports").addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "view-reports" });
   openRegions();
+});
+document.getElementById("btn-add-report").addEventListener("click", () => {
+  Storage.trackEvent("hub_click", { hub: "add-report" });
+  openPlacePicker("report");
 });
 
 // Нижнего меню больше нет — профиль/настройки открываются маленькой
@@ -335,6 +363,56 @@ function renderLocationChooser(contentEl) {
   document.getElementById("lc-skip").addEventListener("click", () => {
     Storage.updateProfile({ locationChooserDismissed: true });
     renderForecast({ skipGeo: true });
+  });
+}
+
+// ---------- ВЫБОР МЕСТА ("Выбрать место" / "Куда добавить отчёт") ----------
+// Один экран на два сценария: mode="forecast" — выбрал место, открылся его
+// прогноз; mode="report" — выбрал место, сразу открылась форма отчёта.
+// Сеть не дёргаем (список без баллов) — экран должен открываться мгновенно,
+// сами баллы человек увидит уже на карточке выбранной точки.
+
+function openPlacePicker(mode) {
+  state.placePickerMode = mode;
+  showView("place-picker");
+  renderPlacePicker("");
+}
+
+function renderPlacePicker(query) {
+  const mode = state.placePickerMode;
+  const profile = Storage.getProfile();
+  const container = document.getElementById("place-picker-content");
+  const allPoints = getAllPoints();
+  const q = (query || "").trim().toLowerCase();
+
+  const list = q
+    ? allPoints.filter((p) => p.name.toLowerCase().includes(q) || (p.town || "").toLowerCase().includes(q)).slice(0, 20)
+    : (profile.region ? allPoints.filter((p) => p.region === profile.region) : allPoints).slice(0, 10);
+
+  container.innerHTML = `
+    <h2>${mode === "report" ? "Куда добавить отчёт?" : "Выберите место"}</h2>
+    <input type="text" id="pp-search" placeholder="🔍 Найти водоём по названию" autocomplete="off" value="${escapeHtml(query || "")}" style="width:100%;border:1px solid var(--gray-200);border-radius:10px;padding:10px 12px;font-size:14px;background:var(--gray-50);color:var(--text);margin-bottom:12px;" />
+    <div class="location-context" id="pp-region-line" style="margin-bottom:14px;">📍 ${profile.region ? escapeHtml(profile.region) : "Регион не выбран"} · изменить</div>
+
+    <div class="section-header"><span class="icon">📍</span><h3>${q ? "Результаты поиска" : profile.region ? "Популярные водоёмы в регионе" : "Популярные водоёмы"}</h3></div>
+    <div class="card" id="pp-list">
+      ${list.length
+        ? list.map((p) => renderPointListItem(p, null)).join("")
+        : `<div class="empty-state" style="padding:12px 0;">Ничего не нашлось. Попробуйте другое название или откройте карту.</div>`}
+    </div>
+
+    <button class="btn-secondary btn-full" id="pp-map-btn">🗺️ Открыть карту</button>
+  `;
+
+  document.getElementById("pp-search").addEventListener("input", (e) => renderPlacePicker(e.target.value));
+  document.getElementById("pp-region-line").addEventListener("click", () => showView("profile"));
+  document.getElementById("pp-map-btn").addEventListener("click", () => showView("map"));
+  container.querySelectorAll("[data-open-point]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const pointId = el.dataset.openPoint;
+      if (mode === "report") openReportForm(pointId);
+      else openPoint(pointId);
+    });
   });
 }
 
@@ -485,7 +563,6 @@ async function renderForecast({ skipGeo = false } = {}) {
       <div class="card-cta-row">
         <button class="btn-primary" id="hero-route-btn">Маршрут</button>
         <button class="btn-secondary" id="hero-details-btn">Подробнее</button>
-        <button class="btn-secondary" id="hero-gear-btn">Что взять</button>
       </div>
     </div>
 
@@ -513,7 +590,6 @@ async function renderForecast({ skipGeo = false } = {}) {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${hero.point.lat},${hero.point.lon}`, "_blank");
   });
   document.getElementById("hero-details-btn").addEventListener("click", () => openPoint(hero.point.id));
-  document.getElementById("hero-gear-btn").addEventListener("click", () => openGearScreen(hero.point, heroWeather));
 
   document.getElementById("location-context").addEventListener("click", () => showView("profile"));
 
@@ -1072,10 +1148,11 @@ async function openPoint(pointOrId, { pushHistory = true } = {}) {
         </div>
       </div>
 
-      <div class="card-row" style="gap:8px;margin-bottom:14px;">
-        <button class="btn-secondary" id="btn-fav" style="flex:1;">${isAdhoc ? "💾 Сохранить точку" : isFav ? "★ В избранном" : "☆ Сохранить"}</button>
-        <button class="btn-secondary" id="btn-route" style="flex:1;">🧭 Маршрут</button>
-        <button class="btn-secondary" id="btn-report" style="flex:1;">📝 Отчёт</button>
+      <div class="card-row" style="gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <button class="btn-secondary" id="btn-fav" style="flex:1;min-width:44%;">${isAdhoc ? "💾 Сохранить точку" : isFav ? "★ В избранном" : "☆ Сохранить"}</button>
+        <button class="btn-secondary" id="btn-route" style="flex:1;min-width:44%;">🧭 Маршрут</button>
+        <button class="btn-secondary" id="btn-report" style="flex:1;min-width:44%;">📝 Отчёт</button>
+        <button class="btn-secondary" id="btn-gear" style="flex:1;min-width:44%;">🎒 Что взять</button>
       </div>
 
       ${point.rules ? `<div class="card"><div class="card-title">Правила / ограничения</div><div class="card-sub">${point.rules}</div></div>` : ""}
@@ -1140,6 +1217,7 @@ async function openPoint(pointOrId, { pushHistory = true } = {}) {
     });
     document.getElementById("btn-quick-yes").addEventListener("click", () => submitQuickReport(point, isAdhoc, true));
     document.getElementById("btn-quick-no").addEventListener("click", () => submitQuickReport(point, isAdhoc, false));
+    document.getElementById("btn-gear").addEventListener("click", () => openGearScreen(point, weather));
   } catch (err) {
     container.innerHTML = `<div class="empty-state"><div class="icon">📡</div>Не достучались до погодного сервиса. Проверьте интернет и попробуйте ещё раз.<br><button class="btn-primary" style="margin-top:12px;" id="retry-point">Повторить</button></div>`;
     document.getElementById("retry-point").addEventListener("click", () => openPoint(point));
@@ -1592,8 +1670,24 @@ function openReportForm(pointId) {
   } else {
     setReportDetailsOpen(false);
   }
+  updateReportSubmitState();
 
   showView("report");
+}
+
+// Публикация доступна только если есть хоть что-то содержательное сверх
+// "клюёт/не клюёт" (это поле и так всегда заполнено переключателем) —
+// иначе легко случайно отправить пустой отчёт, не добавляющий пользы
+// другим рыбакам. Быстрый 1-тап отчёт (submitQuickReport) идёт в обход
+// этой формы отдельным путём и здесь не участвует.
+function updateReportSubmitState() {
+  const species = document.getElementById("report-species").value.trim();
+  const amount = document.getElementById("report-amount").value.trim();
+  const tackle = document.getElementById("report-tackle").value.trim();
+  const bait = document.getElementById("report-bait").value.trim();
+  const comment = document.getElementById("report-comment").value.trim();
+  const hasContent = !!(species || amount || tackle || bait || comment || state.reportSelection.photoDataUrl);
+  document.querySelector('#report-form button[type="submit"]').disabled = !hasContent;
 }
 
 function saveReportDraftNow() {
@@ -1620,7 +1714,10 @@ document.getElementById("report-details-toggle").addEventListener("click", () =>
 });
 
 document.querySelectorAll("#report-details input, #report-details textarea").forEach((el) => {
-  el.addEventListener("input", saveReportDraftNow);
+  el.addEventListener("input", () => {
+    saveReportDraftNow();
+    updateReportSubmitState();
+  });
 });
 document.getElementById("report-location-privacy").addEventListener("change", saveReportDraftNow);
 
@@ -1666,6 +1763,7 @@ document.getElementById("report-photo").addEventListener("change", (e) => {
     document.getElementById("report-photo-preview").innerHTML = `<img src="${reader.result}" />`;
     document.getElementById("photo-upload-label").classList.add("has-photo");
     document.getElementById("photo-upload-text").textContent = "✅ Фото добавлено, можно заменить";
+    updateReportSubmitState();
   };
   reader.readAsDataURL(file);
 });
@@ -1709,13 +1807,21 @@ document.getElementById("report-form").addEventListener("submit", async (e) => {
   const statsAfter = getProfileStats();
   const newAchievements = checkNewAchievements(statsBefore, statsAfter);
 
-  // "Отчёт" всегда открыт поверх "point" в стеке — обычный goBack() (не
-  // ручной сброс viewStack, который раньше терял всю историю выше и
-  // рассинхронизировал её с history API) корректно снимает только report,
-  // возвращая на уже существующую запись "point"; сразу следом перерисовываем
-  // её свежими данными, не добавляя новую запись в историю.
-  goBack();
-  openPoint(pointId, { pushHistory: false });
+  // "Отчёт" открывается поверх либо "point" (кнопка "Отчёт" на карточке
+  // точки), либо "place-picker" (сценарий "Оставить отчёт" с главной,
+  // минуя карточку точки) — это разные случаи, и после публикации нужно
+  // в любом случае оказаться на "point", просто по-разному: если под
+  // report уже была "point" — достаточно вернуться и освежить контент;
+  // если нет — вернуться и затем ЗАЙТИ на точку заново. goBackAndThen
+  // ждёт настоящий popstate, а не выполняется синхронно до него —
+  // иначе получалась гонка, где обработчик popstate позже перерисовывал
+  // поверх уже показанной точки (баг, найденный именно на сценарии
+  // "Оставить отчёт" — там report всегда висел на place-picker).
+  const cameFromPoint = state.viewStack[state.viewStack.length - 2] === "point";
+  goBackAndThen(() => {
+    if (cameFromPoint) openPoint(pointId, { pushHistory: false });
+    else openPoint(pointId);
+  });
 
   showToast("Спасибо! Отчёт сохранён и сделает прогноз точнее для рыбаков рядом. 🎣");
   newAchievements.forEach((a, i) => {
